@@ -56,6 +56,13 @@
   .rowdel:hover{background:#fecaca}
   .rowedit{border:none;background:#e0e7ff;color:#4f46e5;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:14px;line-height:1}
   .rowedit:hover{background:#c7d2fe}
+  .pcard{padding:16px 18px}
+  .pcard-h{font-weight:700;margin-bottom:12px;font-size:15px}
+  .ptag{display:inline-block;background:#eef2ff;color:var(--brand);font-weight:800;padding:2px 10px;border-radius:8px;margin-right:6px}
+  .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px}
+  .pcell{display:flex;flex-direction:column;gap:3px}
+  .pcell label{font-size:12px;color:var(--muted);font-weight:600}
+  .pcell input{padding:8px 10px;text-align:right}
   .totbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-top:16px;background:linear-gradient(120deg,#eef2ff,#faf5ff);border-radius:14px;padding:14px 18px}
   .totbar .words{font-size:13.5px;color:var(--muted);font-style:italic;max-width:60%}
   .totbar .big{font-size:30px;font-weight:800;color:var(--brand)}
@@ -127,6 +134,7 @@
     <button class="tab active" data-tab="phieuthu">📄 Phiếu thu</button>
     <button class="tab" data-tab="thpt">📒 Sổ bán hàng (THPT)</button>
     <button class="tab" data-tab="ngay">📅 Thu theo ngày</button>
+    <button class="tab" data-tab="donggia">💲 Đơn giá</button>
   </div>
 
   <div class="card syncbar">
@@ -217,6 +225,21 @@
     <div class="card"><h3 class="sectitle">📈 Doanh thu theo ngày</h3><div class="barwrap" id="chart"></div></div>
   </section>
 
+  <!-- ĐƠN GIÁ -->
+  <section id="panel-donggia" class="panel">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+        <h3 class="sectitle" style="margin:0">💲 Bảng đơn giá (2026–2027)</h3>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-save btn-sm" onclick="savePrices()">💾 Lưu bảng giá &amp; đồng bộ</button>
+          <button class="btn btn-new btn-sm" onclick="resetPrices()">Khôi phục giá gốc</button>
+        </div>
+      </div>
+      <p class="muted" style="margin:0">Sửa giá trực tiếp vào ô rồi bấm <b>Lưu</b>. Giá mới áp dụng cho phiếu nhập <b>sau khi sửa</b> (các phiếu đã lưu giữ nguyên giá cũ). Bảng giá được ghi vào tab “Đơn giá” trên Google Sheets.</p>
+    </div>
+    <div id="priceWrap"></div>
+  </section>
+
   <p class="muted" style="text-align:center;margin-top:8px">Dữ liệu đồng bộ Google Sheets (lưu cục bộ khi mất mạng). Bảng giá CTY TNHH TM–DV Vũ Lan, 2026–2027.</p>
 </div>
 
@@ -269,7 +292,7 @@ document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
   b.classList.add('active'); $('panel-'+b.dataset.tab).classList.add('active');
-  if(b.dataset.tab==='thpt') renderTHPT(); if(b.dataset.tab==='ngay') renderDaily();
+  if(b.dataset.tab==='thpt') renderTHPT(); if(b.dataset.tab==='ngay') renderDaily(); if(b.dataset.tab==='donggia') renderPrices();
 }));
 
 /* ====== Form ====== */
@@ -367,7 +390,7 @@ function renderDaily(){const arr=dailyAgg();
   if(!arr.length){ch.innerHTML='<div class="empty" style="width:100%">Chưa có dữ liệu theo ngày.</div>';}
   else ch.innerHTML=arr.map(d=>{const h=maxRev?Math.max(6,Math.round(d.tien/maxRev*180)):6;return `<div class="bar"><div class="bval">${Math.round(d.tien/1000)}k</div><div class="col" style="height:${h}px"></div><div class="blab">${shortNgay(d.ngay)}</div></div>`;}).join('');}
 
-function renderAll(){renderTHPT();renderDaily();$('f_pt').value=ptCounter;}
+function renderAll(){renderTHPT();renderDaily();renderPrices();$('f_pt').value=ptCounter;}
 
 /* ====== CSV ====== */
 function csvText(){const head=['PT','Ngay','HoTen','Lop','MaSP','ChungLoai','Size','DonGia','SL','ThanhTien'];
@@ -384,6 +407,20 @@ function importCSV(input){const file=input.files[0];if(!file)return;const rd=new
     if(confirm('Nạp '+data.length+' dòng từ file? (thay dữ liệu hiện tại + đẩy lên Sheets)')){THPT=data;ptCounter=THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0)+1;persist();renderAll();toast('Đã nạp '+data.length+' dòng');cloudPush();}
   }catch(e){toast('Lỗi đọc file');}input.value='';};rd.readAsText(file);}
 
+/* ====== Đơn giá (bảng giá, sửa được, đồng bộ Sheets) ====== */
+const DEFAULT_PRICES={};Object.keys(PRODUCTS).forEach(ma=>DEFAULT_PRICES[ma]={...PRODUCTS[ma].prices});
+function savePricesLocal(){const n={};Object.keys(PRODUCTS).forEach(ma=>n[ma]={...PRODUCTS[ma].prices});localStorage.setItem('dp_prices',JSON.stringify(n));}
+function loadPricesLocal(){try{const n=JSON.parse(localStorage.getItem('dp_prices')||'null');if(n)Object.keys(n).forEach(ma=>{if(PRODUCTS[ma])Object.keys(n[ma]).forEach(s=>{if(PRODUCTS[ma].prices[s]!=null)PRODUCTS[ma].prices[s]=+n[ma][s]||0;});});}catch(e){}}
+function applyPrices(arr){if(!Array.isArray(arr)||!arr.length)return false;let any=false;arr.forEach(r=>{const ma=r.ma,s=String(r.size);if(PRODUCTS[ma]&&PRODUCTS[ma].prices[s]!=null){PRODUCTS[ma].prices[s]=+r.dg||0;any=true;}});return any;}
+function buildPricesExport(){const out=[];Object.keys(PRODUCTS).forEach(ma=>{const p=PRODUCTS[ma];Object.keys(p.prices).forEach(s=>out.push({ma,name:p.name,size:s,dg:p.prices[s]}));});return out;}
+function renderPrices(){const wrap=$('priceWrap');if(!wrap)return;
+  wrap.innerHTML=Object.keys(PRODUCTS).map(ma=>{const p=PRODUCTS[ma];
+    const cells=Object.keys(p.prices).map(s=>`<div class="pcell"><label>Size ${s}</label><input type="number" min="0" step="1000" data-ma="${ma}" data-size="${s}" value="${p.prices[s]}"></div>`).join('');
+    return `<div class="card pcard"><div class="pcard-h"><span class="ptag">${ma}</span> ${p.name}</div><div class="pgrid">${cells}</div></div>`;}).join('');}
+function savePrices(){document.querySelectorAll('#priceWrap input[data-ma]').forEach(inp=>{const ma=inp.dataset.ma,s=inp.dataset.size,v=parseFloat(inp.value)||0;if(PRODUCTS[ma]&&PRODUCTS[ma].prices[s]!=null)PRODUCTS[ma].prices[s]=v;});savePricesLocal();recalc();toast('Đã lưu bảng giá & đồng bộ');cloudPushPrices();}
+function resetPrices(){if(!confirm('Khôi phục bảng giá gốc theo PDF 2026–2027?'))return;Object.keys(DEFAULT_PRICES).forEach(ma=>{PRODUCTS[ma].prices={...DEFAULT_PRICES[ma]};});savePricesLocal();renderPrices();recalc();cloudPushPrices();toast('Đã khôi phục giá gốc');}
+async function cloudPushPrices(){if(!API_URL)return;setSync('busy');try{await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'savePrices',prices:buildPricesExport()})});setSync('on');}catch(e){setSync('err');}}
+
 /* ====== Google Sheets sync ====== */
 function setSync(state,extra){const dot=$('bk_dot'),st=$('bk_status');
   dot.className='dot'+(state?(' '+state):'');
@@ -397,6 +434,7 @@ function saveCfg(){const u=$('cfgUrl').value.trim();if(!/^https:\/\/script\.goog
 async function cloudRead(){if(!API_URL){setSync('none');return false;}setSync('busy');
   try{const res=await fetch(API_URL+(API_URL.includes('?')?'&':'?')+'action=read',{method:'GET'});const data=await res.json();
     if(data&&data.sheetUrl) cloudSheetUrl=data.sheetUrl;
+    if(data){ if(Array.isArray(data.prices)&&data.prices.length){applyPrices(data.prices);savePricesLocal();renderPrices();recalc();} else if(API_URL){cloudPushPrices();} }
     if(data&&data.ok&&Array.isArray(data.rows)){
       THPT=data.rows.map(r=>({pt:r.pt,ngay:r.ngay,hs:r.hs,lop:r.lop,ma:r.ma,name:r.name,size:String(r.size),dg:+r.dg||0,sl:+r.sl||0,tt:+r.tt||0}));
       ptCounter=THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0)+1;persist();setSync('on');return true;}
@@ -422,8 +460,9 @@ async function reloadFromCloud(){const ok=await cloudRead();renderAll();if(ok)to
 
 /* ====== Init ====== */
 (function init(){
+  loadPricesLocal();
   $('f_date').value=new Date().toISOString().slice(0,10);
-  $('f_pt').value=ptCounter; newPhieu();
+  $('f_pt').value=ptCounter; newPhieu(); renderPrices();
   if(API_URL){ cloudRead().then(()=>renderAll()); }
   else { setSync('none'); }
   setInterval(()=>{ if(API_URL) cloudPush(); }, 5*60*1000); // sao lưu định kỳ 5 phút
