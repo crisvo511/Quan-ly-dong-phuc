@@ -113,14 +113,15 @@
   .mtx td.slc{font-weight:700;text-align:right}
   @media(max-width:760px){.grid3{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.totbar .words{max-width:100%}}
   #printArea{display:none}
-  @media print{body{background:#fff}.wrap>*{display:none!important}#printArea{display:block!important}@page{size:A4;margin:16mm}}
-  .pr-doc{font-size:13px;color:#000}
-  .pr-doc h2{text-align:center;margin:2px 0;font-size:22px;letter-spacing:1px}
-  .pr-doc table{width:100%;border-collapse:collapse;margin-top:10px}
-  .pr-doc th,.pr-doc td{border:1px solid #000;padding:6px 8px;font-size:12.5px}
+  @media print{body{background:#fff}.wrap>*{display:none!important}#printArea{display:block!important}@page{size:A4;margin:9mm}}
+  .pr-doc{font-size:11px;color:#000;page-break-inside:avoid;break-inside:avoid}
+  .pr-doc h2{text-align:center;margin:1px 0;font-size:16px;letter-spacing:1px}
+  .pr-doc table{width:100%;border-collapse:collapse;margin-top:4px}
+  .pr-doc th,.pr-doc td{border:1px solid #000;padding:2px 6px;font-size:10.5px}
   .pr-doc th{background:#f0f0f0}.pr-doc .r{text-align:right}
-  .pr-sign{display:flex;justify-content:space-between;margin-top:30px;text-align:center;font-size:12.5px}
-  .pr-sign .sign-space{height:110px}
+  .pr-sign{display:flex;justify-content:space-between;margin-top:8px;text-align:center;font-size:10.5px}
+  .pr-sign .sign-space{height:26px}
+  .pr-cut{border-top:1px dashed #999;margin:7px 0}
 </style>
 </head>
 <body>
@@ -163,7 +164,7 @@
       <div class="rcpt-head">
         <div><div class="school">TRƯỜNG TIỂU HỌC ĐẶNG VĂN NGỮ</div><div class="title">PHIẾU THU</div><div class="sub">Bán đồng phục học sinh</div></div>
         <div style="min-width:230px">
-          <div class="field"><label>Số phiếu (PT)</label><input id="f_pt" type="number" min="1" style="width:120px"></div>
+          <div class="field"><label>PT số</label><input id="f_pt" type="number" min="1" style="width:120px"></div>
           <div class="field"><label>Ngày</label><input id="f_date" type="date"></div>
         </div>
       </div>
@@ -328,7 +329,8 @@ function printPhieu(){const lines=collectLines(),pt=$('f_pt').value||'',ngay=for
   let total=lines.reduce((a,l)=>a+l.tt,0);
   let rows=lines.map((l,i)=>`<tr><td class="r">${i+1}</td><td>${l.ma}</td><td>${l.name}</td><td class="r">${l.size}</td><td class="r">${fmt(l.dg)}</td><td class="r">${l.sl}</td><td class="r">${fmt(l.tt)}</td></tr>`).join('');
   if(!rows)rows=`<tr><td colspan="7" style="text-align:center;color:#888">(chưa có mặt hàng)</td></tr>`;
-  $('printArea').innerHTML=`<div class="pr-doc"><div style="display:flex;justify-content:space-between"><div><b>TRƯỜNG TIỂU HỌC ĐẶNG VĂN NGỮ</b><br><span style="font-size:12px">Đồng phục học sinh 2026–2027</span></div><div class="r" style="text-align:right">Số PT: <b>${pt}</b><br>${ngay}</div></div><h2>PHIẾU THU</h2><div>Họ và tên HS: <b>${hs}</b> &nbsp;&nbsp; Lớp: <b>${lop}</b></div><table><thead><tr><th>STT</th><th>Mã SP</th><th>Chủng loại</th><th>Size</th><th>Đơn giá</th><th>SL</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="6" class="r"><b>Cộng</b></td><td class="r"><b>${fmt(total)}</b></td></tr></tfoot></table><div style="margin-top:8px"><i>Bằng chữ: ${docTienBangChu(total)}</i></div><div class="pr-sign"><div>Phụ huynh học sinh<div class="sign-space"></div>(Ký, ghi rõ họ tên)</div><div>Người thu tiền<div class="sign-space"></div>${nt?('<b>'+nt+'</b>'):'(Ký, ghi rõ họ tên)'}</div></div></div>`;
+  const one=(lien)=>`<div class="pr-doc"><div style="display:flex;justify-content:space-between"><div><b>TRƯỜNG TIỂU HỌC ĐẶNG VĂN NGỮ</b><br><span style="font-size:10px">Đồng phục học sinh 2026–2027</span></div><div class="r" style="text-align:right">PT số: <b>${pt}</b><br>${ngay}<br><span style="font-size:9.5px;color:#555">${lien}</span></div></div><h2>PHIẾU THU</h2><div>Họ và tên HS: <b>${hs}</b> &nbsp; Lớp: <b>${lop}</b></div><table><thead><tr><th>STT</th><th>Mã SP</th><th>Chủng loại</th><th>Size</th><th>Đơn giá</th><th>SL</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="6" class="r"><b>Cộng</b></td><td class="r"><b>${fmt(total)}</b></td></tr></tfoot></table><div style="margin-top:3px"><i>Bằng chữ: ${docTienBangChu(total)}</i></div><div class="pr-sign"><div>Phụ huynh học sinh<div class="sign-space"></div>(Ký, ghi rõ họ tên)</div><div>Người thu tiền<div class="sign-space"></div>${nt?('<b>'+nt+'</b>'):'(Ký, ghi rõ họ tên)'}</div></div></div>`;
+  $('printArea').innerHTML=one('Liên 1 — Phụ huynh')+'<div class="pr-cut"></div>'+one('Liên 2 — Lưu')+'<div class="pr-cut"></div>'+one('Liên 3 — Lưu');
   window.print();}
 
 /* ====== THPT ====== */
