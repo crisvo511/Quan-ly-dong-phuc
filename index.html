@@ -131,11 +131,12 @@
 
   <div class="card syncbar">
     <span class="dot" id="bk_dot"></span>
-    <span class="st" id="bk_status">Google Sheets: chưa cấu hình</span>
+    <span class="st" id="bk_status">Đang kết nối Google Sheets…</span>
     <span class="spacer"></span>
-    <button class="btn btn-ghost btn-sm" onclick="toggleCfg()">⚙ Cấu hình Sheets</button>
-    <button class="btn btn-ghost btn-sm" onclick="reloadFromCloud()">↻ Tải lại từ Sheets</button>
+    <button class="btn btn-print btn-sm" onclick="openSheet()">📊 Mở Google Sheets</button>
+    <button class="btn btn-ghost btn-sm" onclick="reloadFromCloud()">↻ Tải lại dữ liệu</button>
     <button class="btn btn-ghost btn-sm" onclick="downloadCSV()">Tải .csv</button>
+    <button class="btn btn-ghost btn-sm" onclick="toggleCfg()" title="Đổi URL (nâng cao)">⚙</button>
   </div>
   <div class="card" id="cfgBox" style="display:none">
     <div class="field"><label>Web App URL (Google Apps Script — kết thúc bằng /exec)</label>
@@ -224,8 +225,8 @@
 
 <script>
 /* ====== CẤU HÌNH ====== */
-/* Có thể dán sẵn URL vào đây để mọi máy tự kết nối, hoặc để trống và nhập trong app. */
-const DEFAULT_API_URL = "";
+/* URL Web App (Google Apps Script) — đã gắn sẵn để mọi máy tự kết nối, không cần cấu hình. */
+const DEFAULT_API_URL = "https://script.google.com/macros/s/AKfycbyJhv9LnUas6qln0aZjxOII7we48Xmtx1xTAg_4xVt8dtE-8dm1iPumB_DNwyUHUBk/exec";
 
 /* ====== Bảng giá 2026-2027 ====== */
 const PRODUCTS = {
@@ -259,6 +260,7 @@ function formatNgay(iso){if(!iso)return"";const[y,m,d]=iso.split('-');return `Ng
 let THPT = JSON.parse(localStorage.getItem('dp_thpt')||'[]');
 let ptCounter = parseInt(localStorage.getItem('dp_pt')||'1',10);
 let API_URL = DEFAULT_API_URL || localStorage.getItem('dp_apiurl') || "";
+let cloudSheetUrl = "";
 function persist(){localStorage.setItem('dp_thpt',JSON.stringify(THPT));localStorage.setItem('dp_pt',String(ptCounter));}
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2400);}
 
@@ -394,11 +396,17 @@ function saveCfg(){const u=$('cfgUrl').value.trim();if(!/^https:\/\/script\.goog
   API_URL=u;localStorage.setItem('dp_apiurl',u);$('cfgBox').style.display='none';toast('Đã lưu URL, đang tải dữ liệu…');reloadFromCloud();}
 async function cloudRead(){if(!API_URL){setSync('none');return false;}setSync('busy');
   try{const res=await fetch(API_URL+(API_URL.includes('?')?'&':'?')+'action=read',{method:'GET'});const data=await res.json();
+    if(data&&data.sheetUrl) cloudSheetUrl=data.sheetUrl;
     if(data&&data.ok&&Array.isArray(data.rows)){
       THPT=data.rows.map(r=>({pt:r.pt,ngay:r.ngay,hs:r.hs,lop:r.lop,ma:r.ma,name:r.name,size:String(r.size),dg:+r.dg||0,sl:+r.sl||0,tt:+r.tt||0}));
       ptCounter=THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0)+1;persist();setSync('on');return true;}
     setSync('err');return false;
   }catch(e){setSync('err');return false;}}
+function openSheet(){
+  if(cloudSheetUrl){window.open(cloudSheetUrl,'_blank');return;}
+  toast('Đang lấy địa chỉ Google Sheets…');
+  cloudRead().then(()=>{ if(cloudSheetUrl) window.open(cloudSheetUrl,'_blank'); else toast('Chưa lấy được link Sheet. Hãy cập nhật lại Code.gs (doGet trả sheetUrl) rồi thử lại.'); });
+}
 function buildDailyExport(){
   const prods=Object.keys(PRODUCTS);
   const head=['Ngày','Tổng tiền','Tổng SL'];
