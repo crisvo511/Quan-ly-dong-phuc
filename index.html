@@ -63,6 +63,13 @@
   .pcell{display:flex;flex-direction:column;gap:3px}
   .pcell label{font-size:12px;color:var(--muted);font-weight:600}
   .pcell input{padding:8px 10px;text-align:right}
+  .daycards{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px}
+  .dcard{background:#fff;border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);border-left:5px solid var(--brand)}
+  .dcard.c2{border-color:var(--green)}.dcard.c3{border-color:var(--amber)}.dcard.c4{border-color:var(--pink)}.dcard.c5{border-color:var(--accent)}.dcard.c6{border-color:var(--brand2)}
+  .dc-h{font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:6px}
+  .dc-v{font-size:26px;font-weight:800;color:var(--ink)}
+  .dc-v small{font-size:13px;font-weight:600;color:var(--muted)}
+  .dc-m{font-size:13px;color:var(--brand);font-weight:700;margin-top:2px}
   .totbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-top:16px;background:linear-gradient(120deg,#eef2ff,#faf5ff);border-radius:14px;padding:14px 18px}
   .totbar .words{font-size:13.5px;color:var(--muted);font-style:italic;max-width:60%}
   .totbar .big{font-size:30px;font-weight:800;color:var(--brand)}
@@ -219,6 +226,16 @@
       <div class="kpi k4"><div class="lbl">Tổng doanh thu</div><div class="val" id="d_rev">0 đ</div></div>
     </div>
     <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <h3 class="sectitle" style="margin:0">🏷️ Số lượng bán theo loại trong ngày</h3>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="muted">Ngày:</span>
+          <select id="daySel" onchange="onDaySel()" style="min-width:210px"></select>
+        </div>
+      </div>
+      <div class="daycards" id="dayCards"></div>
+    </div>
+    <div class="card">
       <h3 class="sectitle">📊 Bảng chi tiết số lượng bán theo ngày × loại × size</h3>
       <p class="muted" style="margin-top:-6px">Mỗi ô = số cái đã bán của loại/size đó trong ngày. Cuộn ngang để xem hết các loại.</p>
       <div class="scroll" style="max-height:520px"><table class="mtx"><thead id="matrixHead"></thead><tbody id="matrixBody"></tbody></table></div>
@@ -285,7 +302,24 @@ let THPT = JSON.parse(localStorage.getItem('dp_thpt')||'[]');
 let ptCounter = parseInt(localStorage.getItem('dp_pt')||'1',10);
 let API_URL = DEFAULT_API_URL || localStorage.getItem('dp_apiurl') || "";
 let cloudSheetUrl = "";
+function uid(){try{return crypto.randomUUID();}catch(e){return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,9);}}
+THPT.forEach(r=>{if(!r.id)r.id=uid();});   // gắn ID cho dữ liệu cũ chưa có
+let queue = JSON.parse(localStorage.getItem('dp_queue')||'[]');   // hàng đợi thao tác chưa đồng bộ (chống mất khi offline)
+function saveQueue(){localStorage.setItem('dp_queue',JSON.stringify(queue));}
 function persist(){localStorage.setItem('dp_thpt',JSON.stringify(THPT));localStorage.setItem('dp_pt',String(ptCounter));}
+function enqueue(op){queue.push(op);saveQueue();flushQueue();}
+let flushing=false;
+async function flushQueue(){
+  if(!API_URL){setSync('none');return;}
+  if(flushing) return;
+  if(!queue.length){setSync('on');return;}
+  flushing=true;setSync('busy');
+  while(queue.length){
+    try{ await fetch(API_URL,{method:'POST',body:JSON.stringify(queue[0])}); queue.shift(); saveQueue(); }
+    catch(e){ flushing=false; setSync('err'); return; }   // mất mạng -> giữ nguyên hàng đợi, sẽ thử lại
+  }
+  flushing=false; setSync('on');
+}
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2400);}
 
 /* ====== Tabs ====== */
@@ -316,8 +350,11 @@ function savePhieu(){const lines=collectLines();if(!lines.length){toast('Chưa c
   const pt=parseInt($('f_pt').value,10)||ptCounter,ngay=formatNgay($('f_date').value);
   if(!ngay){toast('Vui lòng chọn ngày');return;}
   const hs=$('f_hs').value.trim(),lop=$('f_lop').value.trim();
-  lines.forEach(l=>THPT.push({pt,ngay,hs,lop,...l}));
-  ptCounter=Math.max(ptCounter,pt)+1;persist();toast('Đã lưu '+lines.length+' dòng — phiếu vẫn giữ để In');cloudPush();markSaved();}
+  const newRows=lines.map(l=>({id:uid(),pt,ngay,hs,lop,...l}));
+  newRows.forEach(r=>THPT.push(r));
+  ptCounter=Math.max(ptCounter,pt)+1;persist();
+  enqueue({action:'append',rows:newRows});
+  toast('Đã lưu '+lines.length+' dòng — phiếu vẫn giữ để In');markSaved();}
 function markSaved(){window.__saved=true;const b=$('btnSave');if(b){b.disabled=true;b.textContent='✓ Đã lưu';}}
 function restoreSaveBtn(){window.__saved=false;const b=$('btnSave');if(b){b.disabled=false;b.innerHTML='💾 Lưu &amp; đồng bộ';}}
 function newPhieu(){
@@ -364,10 +401,11 @@ function onEditMa(){const ma=$('e_ma').value;$('e_name').textContent=PRODUCTS[ma
 function recalcEdit(){const ma=$('e_ma').value,size=$('e_size').value,sl=parseFloat($('e_sl').value)||0;const dg=(ma&&size&&PRODUCTS[ma].prices[size]!=null)?PRODUCTS[ma].prices[size]:0;$('e_dg').textContent=fmt(dg);$('e_tt').textContent=fmt(dg*sl);}
 function saveRow(i){const ma=$('e_ma').value,size=$('e_size').value;if(!ma||!size){toast('Chọn Mã SP và Size');return;}
   const sl=parseFloat($('e_sl').value)||0,dg=PRODUCTS[ma].prices[size]||0,iso=$('e_date').value;
-  THPT[i]={pt:parseInt($('e_pt').value,10)||THPT[i].pt,ngay:iso?formatNgay(iso):THPT[i].ngay,hs:$('e_hs').value.trim(),lop:$('e_lop').value.trim(),ma,name:PRODUCTS[ma].name,size,dg,sl,tt:dg*sl};
-  editIdx=-1;persist();renderTHPT();renderDaily();cloudPush();toast('Đã cập nhật & đồng bộ dòng');}
-function delRow(i){if(!confirm('Xoá dòng này (cả trên Google Sheets)?'))return;THPT.splice(i,1);if(editIdx===i)editIdx=-1;persist();renderTHPT();renderDaily();cloudPush();}
-function clearAll(){if(confirm('Xoá toàn bộ dữ liệu (cả trên Google Sheets)?')){THPT=[];persist();renderTHPT();cloudPush();}}
+  const id=THPT[i].id||uid();
+  THPT[i]={id,pt:parseInt($('e_pt').value,10)||THPT[i].pt,ngay:iso?formatNgay(iso):THPT[i].ngay,hs:$('e_hs').value.trim(),lop:$('e_lop').value.trim(),ma,name:PRODUCTS[ma].name,size,dg,sl,tt:dg*sl};
+  editIdx=-1;persist();renderTHPT();renderDaily();enqueue({action:'update',row:THPT[i]});toast('Đã cập nhật & đồng bộ');}
+function delRow(i){if(!confirm('Xoá dòng này (cả trên Google Sheets)?'))return;const id=THPT[i].id;THPT.splice(i,1);if(editIdx===i)editIdx=-1;persist();renderTHPT();renderDaily();if(id)enqueue({action:'delete',id});}
+function clearAll(){if(confirm('Xoá toàn bộ dữ liệu (cả trên Google Sheets)?')){THPT=[];persist();renderTHPT();renderDaily();enqueue({action:'clear'});}}
 
 /* ====== Daily ====== */
 function keyNgay(s){const m=s&&s.match(/Ngày (\d+) Tháng (\d+) năm (\d+)/);return m?new Date(+m[3],+m[2]-1,+m[1]).getTime():0;}
@@ -388,25 +426,43 @@ function renderDaily(){const arr=dailyAgg();
   else arr.forEach(d=>{body+=`<tr><td class="stickc">${d.ngay}</td><td class="tien">${fmt(d.tien)}</td><td class="slc">${fmt(d.sl)}</td>`;
     prods.forEach(p=>Object.keys(PRODUCTS[p].prices).forEach(s=>{const q=(cell[d.ngay]&&cell[d.ngay][p+'|'+s])||0;body+=`<td class="cell">${q?('<span class="qty">'+q+'</span>'):'·'}</td>`;}));body+='</tr>';});
   $('matrixBody').innerHTML=body;
+  const sel=$('daySel');
+  if(sel){const prev=sel.value;
+    sel.innerHTML='<option value="__all__">Tất cả các ngày</option>'+arr.slice().reverse().map(d=>`<option value="${d.ngay}">${d.ngay}</option>`).join('');
+    if(userPickedDay && prev && [...sel.options].some(o=>o.value===prev)) sel.value=prev;
+    else sel.value=arr.length?arr[arr.length-1].ngay:'__all__';  // mặc định ngày mới nhất
+  }
+  renderDayCards();
   const ch=$('chart');
   if(!arr.length){ch.innerHTML='<div class="empty" style="width:100%">Chưa có dữ liệu theo ngày.</div>';}
   else ch.innerHTML=arr.map(d=>{const h=maxRev?Math.max(6,Math.round(d.tien/maxRev*180)):6;return `<div class="bar"><div class="bval">${Math.round(d.tien/1000)}k</div><div class="col" style="height:${h}px"></div><div class="blab">${shortNgay(d.ngay)}</div></div>`;}).join('');}
 
+let userPickedDay=false;
+function onDaySel(){userPickedDay=true;renderDayCards();}
+function renderDayCards(){
+  const wrap=$('dayCards'); if(!wrap) return;
+  const sel=$('daySel'); const day=sel?sel.value:'__all__';
+  const acc={}; Object.keys(PRODUCTS).forEach(ma=>acc[ma]={sl:0,tt:0});
+  THPT.forEach(r=>{ if(day==='__all__'||r.ngay===day){ if(acc[r.ma]){acc[r.ma].sl+=r.sl;acc[r.ma].tt+=r.tt;} } });
+  wrap.innerHTML=Object.keys(PRODUCTS).map((ma,i)=>`<div class="dcard c${i+1}"><div class="dc-h"><span class="ptag">${ma}</span> ${PRODUCTS[ma].name}</div><div class="dc-v">${fmt(acc[ma].sl)} <small>cái</small></div><div class="dc-m">${money(acc[ma].tt)}</div></div>`).join('');
+}
 function renderAll(){renderTHPT();renderDaily();renderPrices();$('f_pt').value=ptCounter;}
 
 /* ====== CSV ====== */
-function csvText(){const head=['PT','Ngay','HoTen','Lop','MaSP','ChungLoai','Size','DonGia','SL','ThanhTien'];
-  const rows=THPT.map(r=>[r.pt,r.ngay,r.hs,r.lop,r.ma,r.name,r.size,r.dg,r.sl,r.tt]);
+function csvText(){const head=['ID','PT','Ngay','HoTen','Lop','MaSP','ChungLoai','Size','DonGia','SL','ThanhTien'];
+  const rows=THPT.map(r=>[r.id,r.pt,r.ngay,r.hs,r.lop,r.ma,r.name,r.size,r.dg,r.sl,r.tt]);
   return '﻿'+head.join(',')+'\n'+rows.map(r=>r.map(c=>`"${String(c==null?'':c).replace(/"/g,'""')}"`).join(',')).join('\n');}
 function parseCSV(text){text=text.replace(/^﻿/,'');const lines=text.split(/\r?\n/).filter(x=>x.length);const out=[];
   for(let i=1;i<lines.length;i++){const f=[];let cur='',q=false,ln=lines[i];
     for(let j=0;j<ln.length;j++){const c=ln[j];if(q){if(c==='"'){if(ln[j+1]==='"'){cur+='"';j++;}else q=false;}else cur+=c;}else{if(c==='"')q=true;else if(c===','){f.push(cur);cur='';}else cur+=c;}}
-    f.push(cur);if(f.length<10)continue;
-    out.push({pt:+f[0]||f[0],ngay:f[1],hs:f[2],lop:f[3],ma:f[4],name:f[5],size:f[6],dg:+f[7]||0,sl:+f[8]||0,tt:+f[9]||0});}return out;}
+    f.push(cur);
+    if(f.length>=11){ out.push({id:f[0]||uid(),pt:+f[1]||f[1],ngay:f[2],hs:f[3],lop:f[4],ma:f[5],name:f[6],size:f[7],dg:+f[8]||0,sl:+f[9]||0,tt:+f[10]||0}); }
+    else if(f.length>=10){ out.push({id:uid(),pt:+f[0]||f[0],ngay:f[1],hs:f[2],lop:f[3],ma:f[4],name:f[5],size:f[6],dg:+f[7]||0,sl:+f[8]||0,tt:+f[9]||0}); }
+  }return out;}
 function downloadCSV(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csvText()],{type:'text/csv'}));a.download='backup_dongphuc.csv';a.click();toast('Đã tải file .csv');}
 function importCSV(input){const file=input.files[0];if(!file)return;const rd=new FileReader();
   rd.onload=()=>{try{const data=parseCSV(rd.result);if(!data.length){toast('File trống/sai định dạng');return;}
-    if(confirm('Nạp '+data.length+' dòng từ file? (thay dữ liệu hiện tại + đẩy lên Sheets)')){THPT=data;ptCounter=THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0)+1;persist();renderAll();toast('Đã nạp '+data.length+' dòng');cloudPush();}
+    if(confirm('Nạp '+data.length+' dòng từ file? (thay dữ liệu hiện tại + đẩy lên Sheets)')){THPT=data.map(r=>({...r,id:r.id||uid()}));ptCounter=THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0)+1;persist();renderAll();toast('Đã nạp '+data.length+' dòng');enqueue({action:'clear'});enqueue({action:'append',rows:THPT});}
   }catch(e){toast('Lỗi đọc file');}input.value='';};rd.readAsText(file);}
 
 /* ====== Đơn giá (bảng giá, sửa được, đồng bộ Sheets) ====== */
@@ -421,53 +477,49 @@ function renderPrices(){const wrap=$('priceWrap');if(!wrap)return;
     return `<div class="card pcard"><div class="pcard-h"><span class="ptag">${ma}</span> ${p.name}</div><div class="pgrid">${cells}</div></div>`;}).join('');}
 function savePrices(){document.querySelectorAll('#priceWrap input[data-ma]').forEach(inp=>{const ma=inp.dataset.ma,s=inp.dataset.size,v=parseFloat(inp.value)||0;if(PRODUCTS[ma]&&PRODUCTS[ma].prices[s]!=null)PRODUCTS[ma].prices[s]=v;});savePricesLocal();recalc();toast('Đã lưu bảng giá & đồng bộ');cloudPushPrices();}
 function resetPrices(){if(!confirm('Khôi phục bảng giá gốc theo PDF 2026–2027?'))return;Object.keys(DEFAULT_PRICES).forEach(ma=>{PRODUCTS[ma].prices={...DEFAULT_PRICES[ma]};});savePricesLocal();renderPrices();recalc();cloudPushPrices();toast('Đã khôi phục giá gốc');}
-async function cloudPushPrices(){if(!API_URL)return;setSync('busy');try{await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'savePrices',prices:buildPricesExport()})});setSync('on');}catch(e){setSync('err');}}
+function cloudPushPrices(){if(!API_URL)return;enqueue({action:'savePrices',prices:buildPricesExport()});}
 
 /* ====== Google Sheets sync ====== */
-function setSync(state,extra){const dot=$('bk_dot'),st=$('bk_status');
+function setSync(state){const dot=$('bk_dot'),st=$('bk_status');
   dot.className='dot'+(state?(' '+state):'');
-  const map={none:'Google Sheets: <b>chưa cấu hình</b>',busy:'Đang đồng bộ Google Sheets…',
-    on:`Đã đồng bộ Google Sheets · <b>${new Date().toLocaleTimeString('vi-VN')}</b>`,
-    err:'<b style="color:#dc2626">Lỗi kết nối</b> — đã lưu cục bộ, sẽ thử lại'};
-  st.innerHTML=(map[state]||map.none)+(extra?(' '+extra):'');}
+  const n=(typeof queue!=='undefined')?queue.length:0;
+  const pend=n?(' · còn '+n+' chờ gửi'):'';
+  const map={none:'Google Sheets: <b>chưa cấu hình</b>',busy:'Đang đồng bộ Google Sheets…'+pend,
+    on:`Đã đồng bộ · <b>${new Date().toLocaleTimeString('vi-VN')}</b>`,
+    err:'<b style="color:#dc2626">Mất kết nối</b> — đã lưu cục bộ'+pend+', sẽ tự gửi lại'};
+  st.innerHTML=(map[state]||map.none);}
 function toggleCfg(){const b=$('cfgBox');b.style.display=(b.style.display==='none')?'block':'none';if(b.style.display==='block')$('cfgUrl').value=API_URL;}
 function saveCfg(){const u=$('cfgUrl').value.trim();if(!/^https:\/\/script\.google\.com\/.*\/exec$/.test(u)){if(!confirm('URL có vẻ không đúng dạng .../exec. Vẫn lưu?'))return;}
   API_URL=u;localStorage.setItem('dp_apiurl',u);$('cfgBox').style.display='none';toast('Đã lưu URL, đang tải dữ liệu…');reloadFromCloud();}
-async function cloudRead(){if(!API_URL){setSync('none');return false;}setSync('busy');
-  try{const res=await fetch(API_URL+(API_URL.includes('?')?'&':'?')+'action=read',{method:'GET'});const data=await res.json();
+async function cloudPull(){if(!API_URL){setSync('none');return false;}
+  if(queue.length){ await flushQueue(); if(queue.length) return false; }  // còn thao tác chưa đẩy -> đẩy trước, chưa kéo (tránh mất dữ liệu offline)
+  setSync('busy');
+  try{const res=await fetch(API_URL+(API_URL.includes('?')?'&':'?')+'action=read&t='+Date.now(),{method:'GET'});const data=await res.json();
     if(data&&data.sheetUrl) cloudSheetUrl=data.sheetUrl;
-    if(data){ if(Array.isArray(data.prices)&&data.prices.length){applyPrices(data.prices);savePricesLocal();renderPrices();recalc();} else if(API_URL){cloudPushPrices();} }
+    if(data){ if(Array.isArray(data.prices)&&data.prices.length){applyPrices(data.prices);savePricesLocal();renderPrices();recalc();} else {cloudPushPrices();} }
     if(data&&data.ok&&Array.isArray(data.rows)){
-      THPT=data.rows.map(r=>({pt:r.pt,ngay:r.ngay,hs:r.hs,lop:r.lop,ma:r.ma,name:r.name,size:String(r.size),dg:+r.dg||0,sl:+r.sl||0,tt:+r.tt||0}));
+      THPT=data.rows.map(r=>({id:r.id||uid(),pt:r.pt,ngay:r.ngay,hs:r.hs,lop:r.lop,ma:r.ma,name:r.name,size:String(r.size),dg:+r.dg||0,sl:+r.sl||0,tt:+r.tt||0}));
       ptCounter=THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0)+1;persist();setSync('on');return true;}
     setSync('err');return false;
   }catch(e){setSync('err');return false;}}
 function openSheet(){
   if(cloudSheetUrl){window.open(cloudSheetUrl,'_blank');return;}
   toast('Đang lấy địa chỉ Google Sheets…');
-  cloudRead().then(()=>{ if(cloudSheetUrl) window.open(cloudSheetUrl,'_blank'); else toast('Chưa lấy được link Sheet. Hãy cập nhật lại Code.gs (doGet trả sheetUrl) rồi thử lại.'); });
+  cloudPull().then(()=>{ if(cloudSheetUrl) window.open(cloudSheetUrl,'_blank'); else toast('Chưa lấy được link Sheet. Hãy cập nhật lại Code.gs (doGet trả sheetUrl) rồi thử lại.'); });
 }
-function buildDailyExport(){
-  const prods=Object.keys(PRODUCTS);
-  const head=['Ngày','Tổng tiền','Tổng SL'];
-  prods.forEach(p=>Object.keys(PRODUCTS[p].prices).forEach(s=>head.push(p+' '+s)));
-  const cell={};THPT.forEach(r=>{const k=r.ma+'|'+r.size;(cell[r.ngay]=cell[r.ngay]||{});cell[r.ngay][k]=(cell[r.ngay][k]||0)+r.sl;});
-  const rows=dailyAgg().map(d=>{const row=[d.ngay,d.tien,d.sl];prods.forEach(p=>Object.keys(PRODUCTS[p].prices).forEach(s=>row.push((cell[d.ngay]&&cell[d.ngay][p+'|'+s])||0)));return row;});
-  return {head,rows};
-}
-async function cloudPush(){if(!API_URL){setSync('none');return;}setSync('busy');
-  try{await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'replace',rows:THPT,daily:buildDailyExport()})});setSync('on');}
-  catch(e){setSync('err');}}
-async function reloadFromCloud(){const ok=await cloudRead();renderAll();if(ok)toast('Đã tải dữ liệu từ Google Sheets');}
+async function reloadFromCloud(){const ok=await cloudPull();renderAll();if(ok)toast('Đã tải dữ liệu từ Google Sheets');}
 
 /* ====== Init ====== */
 (function init(){
   loadPricesLocal();
   $('f_date').value=new Date().toISOString().slice(0,10);
   $('f_pt').value=ptCounter; newPhieu(); renderPrices();
-  if(API_URL){ cloudRead().then(()=>renderAll()); }
-  else { setSync('none'); }
-  setInterval(()=>{ if(API_URL) cloudPush(); }, 5*60*1000); // sao lưu định kỳ 5 phút
+  if(API_URL){
+    flushQueue().then(()=>cloudPull()).then(renderAll);   // đẩy thao tác offline (nếu có) rồi kéo dữ liệu mới nhất
+  } else { setSync('none'); }
+  // Đồng bộ định kỳ 30s: còn thao tác chờ thì gửi; rảnh thì kéo về để thấy phiếu máy khác nhập
+  setInterval(()=>{ if(!API_URL) return; if(queue.length) flushQueue(); else if(editIdx===-1) cloudPull().then(()=>{renderTHPT();renderDaily();}); }, 30000);
+  window.addEventListener('online', ()=>{ if(API_URL) flushQueue(); });        // vừa có mạng lại -> gửi ngay
 })();
 </script>
 </body>
