@@ -54,6 +54,8 @@
   .items .ttien{font-weight:700;color:var(--brand)}
   .rowdel{border:none;background:#fee2e2;color:#dc2626;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:15px;line-height:1}
   .rowdel:hover{background:#fecaca}
+  .rowedit{border:none;background:#e0e7ff;color:#4f46e5;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:14px;line-height:1}
+  .rowedit:hover{background:#c7d2fe}
   .totbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-top:16px;background:linear-gradient(120deg,#eef2ff,#faf5ff);border-radius:14px;padding:14px 18px}
   .totbar .words{font-size:13.5px;color:var(--muted);font-style:italic;max-width:60%}
   .totbar .big{font-size:30px;font-weight:800;color:var(--brand)}
@@ -167,11 +169,13 @@
       </table>
       <button class="btn btn-add" onclick="addRow()">＋ Thêm dòng</button>
       <div class="totbar"><div class="words">Bằng chữ: <span id="f_words">Không đồng</span></div><div style="text-align:right"><div class="muted">Tổng cộng</div><div class="big" id="f_total">0 đ</div></div></div>
-      <div class="btns">
+      <div class="btns" style="align-items:center">
         <button class="btn btn-print" onclick="printPhieu()">🖨️ In phiếu</button>
-        <button class="btn btn-save" onclick="savePhieu()">💾 Lưu &amp; đồng bộ</button>
-        <button class="btn btn-new" onclick="newPhieu()">Phiếu mới</button>
+        <button class="btn btn-save" id="btnSave" onclick="savePhieu()">💾 Lưu &amp; đồng bộ</button>
+        <span style="flex:1"></span>
+        <button class="btn btn-new" onclick="newPhieu()" title="Xoá nội dung để nhập phiếu mới">🗑️ Phiếu mới</button>
       </div>
+      <p class="muted" style="margin:8px 0 0">Sau khi lưu, phiếu <b>vẫn giữ nguyên</b> để bạn In. Bấm <b>Phiếu mới</b> (góc phải) khi muốn nhập phiếu kế tiếp.</p>
     </div>
     <p class="muted">Mẹo: chọn <b>Mã SP</b> rồi chọn <b>Size</b> — đơn giá tự điền theo bảng giá 2026–2027. Đồ thể dục (TD) dùng size chữ XS–5XL.</p>
   </section>
@@ -287,8 +291,13 @@ function savePhieu(){const lines=collectLines();if(!lines.length){toast('Chưa c
   if(!ngay){toast('Vui lòng chọn ngày');return;}
   const hs=$('f_hs').value.trim(),lop=$('f_lop').value.trim();
   lines.forEach(l=>THPT.push({pt,ngay,hs,lop,...l}));
-  ptCounter=Math.max(ptCounter,pt)+1;persist();toast('Đã lưu '+lines.length+' dòng');cloudPush();newPhieu();}
-function newPhieu(){$('f_pt').value=ptCounter;$('f_hs').value='';$('f_lop').value='';$('lineRows').innerHTML='';for(let i=0;i<5;i++)addRow();}
+  ptCounter=Math.max(ptCounter,pt)+1;persist();toast('Đã lưu '+lines.length+' dòng — phiếu vẫn giữ để In');cloudPush();markSaved();}
+function markSaved(){window.__saved=true;const b=$('btnSave');if(b){b.disabled=true;b.textContent='✓ Đã lưu';}}
+function restoreSaveBtn(){window.__saved=false;const b=$('btnSave');if(b){b.disabled=false;b.innerHTML='💾 Lưu &amp; đồng bộ';}}
+function newPhieu(){
+  const hasData=[...document.querySelectorAll('#lineRows .r-ma')].some(s=>s.value);
+  if(hasData && !window.__saved && !confirm('Xoá nội dung phiếu hiện tại (chưa lưu) để nhập phiếu mới?')) return;
+  $('f_pt').value=ptCounter;$('f_hs').value='';$('f_lop').value='';$('f_nguoithu').value='';$('lineRows').innerHTML='';for(let i=0;i<5;i++)addRow();restoreSaveBtn();}
 function printPhieu(){const lines=collectLines(),pt=$('f_pt').value||'',ngay=formatNgay($('f_date').value);
   const hs=$('f_hs').value||'.................',lop=$('f_lop').value||'.........',nt=$('f_nguoithu').value||'';
   let total=lines.reduce((a,l)=>a+l.tt,0);
@@ -298,13 +307,39 @@ function printPhieu(){const lines=collectLines(),pt=$('f_pt').value||'',ngay=for
   window.print();}
 
 /* ====== THPT ====== */
+let editIdx=-1;
+function escAttr(s){return String(s==null?'':s).replace(/"/g,'&quot;');}
+function parseNgayToIso(s){const m=s&&s.match(/Ngày (\d+) Tháng (\d+) năm (\d+)/);if(!m)return'';const p=n=>('0'+n).slice(-2);return `${m[3]}-${p(m[2])}-${p(m[1])}`;}
 function renderTHPT(){let rev=0,qty=0;const pts=new Set();
   THPT.forEach(r=>{rev+=r.tt;qty+=r.sl;pts.add(r.pt+'|'+r.ngay);});
   $('t_rev').textContent=money(rev);$('t_qty').textContent=fmt(qty);$('t_lines').textContent=fmt(THPT.length);$('t_pt').textContent=fmt(pts.size);
   const tb=$('thptRows');
   if(!THPT.length){tb.innerHTML=`<tr><td colspan="11" class="empty">Chưa có dữ liệu. Hãy lưu một phiếu thu.</td></tr>`;return;}
-  tb.innerHTML=THPT.map((r,i)=>`<tr><td><span class="tag">${r.pt}</span></td><td>${r.ngay}</td><td>${r.hs||''}</td><td>${r.lop||''}</td><td>${r.ma}</td><td>${r.name}</td><td>${r.size}</td><td class="num">${fmt(r.dg)}</td><td class="num">${r.sl}</td><td class="num">${fmt(r.tt)}</td><td><button class="rowdel" onclick="delRow(${i})">×</button></td></tr>`).join('');}
-function delRow(i){THPT.splice(i,1);persist();renderTHPT();cloudPush();}
+  tb.innerHTML=THPT.map((r,i)=> i===editIdx?editRowHTML(r,i):viewRowHTML(r,i)).join('');}
+function viewRowHTML(r,i){return `<tr><td><span class="tag">${r.pt}</span></td><td>${r.ngay}</td><td>${escAttr(r.hs)}</td><td>${escAttr(r.lop)}</td><td>${r.ma}</td><td>${r.name}</td><td>${r.size}</td><td class="num">${fmt(r.dg)}</td><td class="num">${r.sl}</td><td class="num">${fmt(r.tt)}</td><td style="white-space:nowrap"><button class="rowedit" onclick="editRow(${i})" title="Sửa">✎</button> <button class="rowdel" onclick="delRow(${i})" title="Xoá">×</button></td></tr>`;}
+function editRowHTML(r,i){const iso=parseNgayToIso(r.ngay);
+  return `<tr style="background:#fffbeb">
+    <td><input id="e_pt" type="number" value="${r.pt}" style="width:56px"></td>
+    <td><input id="e_date" type="date" value="${iso}" style="width:140px"></td>
+    <td><input id="e_hs" value="${escAttr(r.hs)}" style="min-width:110px"></td>
+    <td><input id="e_lop" value="${escAttr(r.lop)}" style="width:60px"></td>
+    <td><select id="e_ma" onchange="onEditMa()">${maOptions(r.ma)}</select></td>
+    <td class="muted" id="e_name">${PRODUCTS[r.ma]?PRODUCTS[r.ma].name:''}</td>
+    <td><select id="e_size" onchange="recalcEdit()">${sizeOptions(r.ma,String(r.size))}</select></td>
+    <td class="num" id="e_dg">${fmt(r.dg)}</td>
+    <td><input id="e_sl" type="number" min="0" value="${r.sl}" style="width:60px;text-align:right" oninput="recalcEdit()"></td>
+    <td class="num" id="e_tt">${fmt(r.tt)}</td>
+    <td style="white-space:nowrap"><button class="btn btn-save btn-sm" style="padding:5px 10px" onclick="saveRow(${i})">Lưu</button> <button class="rowdel" onclick="cancelEdit()" title="Huỷ">↩</button></td>
+  </tr>`;}
+function editRow(i){editIdx=i;renderTHPT();}
+function cancelEdit(){editIdx=-1;renderTHPT();}
+function onEditMa(){const ma=$('e_ma').value;$('e_name').textContent=PRODUCTS[ma]?PRODUCTS[ma].name:'';$('e_size').innerHTML=sizeOptions(ma,'');recalcEdit();}
+function recalcEdit(){const ma=$('e_ma').value,size=$('e_size').value,sl=parseFloat($('e_sl').value)||0;const dg=(ma&&size&&PRODUCTS[ma].prices[size]!=null)?PRODUCTS[ma].prices[size]:0;$('e_dg').textContent=fmt(dg);$('e_tt').textContent=fmt(dg*sl);}
+function saveRow(i){const ma=$('e_ma').value,size=$('e_size').value;if(!ma||!size){toast('Chọn Mã SP và Size');return;}
+  const sl=parseFloat($('e_sl').value)||0,dg=PRODUCTS[ma].prices[size]||0,iso=$('e_date').value;
+  THPT[i]={pt:parseInt($('e_pt').value,10)||THPT[i].pt,ngay:iso?formatNgay(iso):THPT[i].ngay,hs:$('e_hs').value.trim(),lop:$('e_lop').value.trim(),ma,name:PRODUCTS[ma].name,size,dg,sl,tt:dg*sl};
+  editIdx=-1;persist();renderTHPT();renderDaily();cloudPush();toast('Đã cập nhật & đồng bộ dòng');}
+function delRow(i){if(!confirm('Xoá dòng này (cả trên Google Sheets)?'))return;THPT.splice(i,1);if(editIdx===i)editIdx=-1;persist();renderTHPT();renderDaily();cloudPush();}
 function clearAll(){if(confirm('Xoá toàn bộ dữ liệu (cả trên Google Sheets)?')){THPT=[];persist();renderTHPT();cloudPush();}}
 
 /* ====== Daily ====== */
@@ -364,8 +399,16 @@ async function cloudRead(){if(!API_URL){setSync('none');return false;}setSync('b
       ptCounter=THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0)+1;persist();setSync('on');return true;}
     setSync('err');return false;
   }catch(e){setSync('err');return false;}}
+function buildDailyExport(){
+  const prods=Object.keys(PRODUCTS);
+  const head=['Ngày','Tổng tiền','Tổng SL'];
+  prods.forEach(p=>Object.keys(PRODUCTS[p].prices).forEach(s=>head.push(p+' '+s)));
+  const cell={};THPT.forEach(r=>{const k=r.ma+'|'+r.size;(cell[r.ngay]=cell[r.ngay]||{});cell[r.ngay][k]=(cell[r.ngay][k]||0)+r.sl;});
+  const rows=dailyAgg().map(d=>{const row=[d.ngay,d.tien,d.sl];prods.forEach(p=>Object.keys(PRODUCTS[p].prices).forEach(s=>row.push((cell[d.ngay]&&cell[d.ngay][p+'|'+s])||0)));return row;});
+  return {head,rows};
+}
 async function cloudPush(){if(!API_URL){setSync('none');return;}setSync('busy');
-  try{await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'replace',rows:THPT})});setSync('on');}
+  try{await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'replace',rows:THPT,daily:buildDailyExport()})});setSync('on');}
   catch(e){setSync('err');}}
 async function reloadFromCloud(){const ok=await cloudRead();renderAll();if(ok)toast('Đã tải dữ liệu từ Google Sheets');}
 
