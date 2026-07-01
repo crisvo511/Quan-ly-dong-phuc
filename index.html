@@ -271,12 +271,12 @@ const DEFAULT_API_URL = "https://script.google.com/macros/s/AKfycbyJhv9LnUas6qln
 
 /* ====== Bảng giá 2026-2027 ====== */
 const PRODUCTS = {
-  NT:{name:"Áo sơ mi nam trắng", prices:{"5":112000,"6":114000,"8":116000,"10":118000,"12":120000,"14":122000,"16":124000,"18":126000}},
-  BT:{name:"Áo nữ sen bèo trắng", prices:{"5":112000,"6":114000,"8":116000,"10":118000,"12":120000,"14":122000,"16":124000,"18":126000}},
-  VX:{name:"Váy xòe",            prices:{"5":120000,"6":122000,"8":124000,"10":126000,"12":128000,"14":130000,"16":132000}},
-  QS:{name:"Quần short nam",      prices:{"5":112000,"6":114000,"8":116000,"10":118000,"12":120000,"14":122000,"16":124000}},
-  QD:{name:"Quần dài nam",        prices:{"5":122000,"6":124000,"8":126000,"10":128000,"12":130000,"14":132000,"16":134000,"18":136000}},
-  TD:{name:"Đồ thể dục",          prices:{"XS":180000,"S":185000,"M":190000,"L":195000,"XL":200000,"2XL":205000,"3XL":210000,"4XL":215000,"5XL":220000}}
+  NT:{name:"Áo sơ mi nam trắng", prices:{"5":112000,"6":114000,"8":116000,"10":118000,"12":120000,"14":122000,"15":124000,"16":126000,"18":128000,"20":130000,"22":132000}},
+  BT:{name:"Áo nữ sen bèo trắng", prices:{"5":112000,"6":114000,"8":116000,"10":118000,"12":120000,"14":122000,"15":124000,"16":126000,"18":128000,"20":130000,"22":132000}},
+  VX:{name:"Váy xòe",            prices:{"5":120000,"6":122000,"8":124000,"10":126000,"12":128000,"14":130000,"16":132000,"18":134000,"20":136000,"22":138000}},
+  QS:{name:"Quần short nam",      prices:{"5":112000,"6":114000,"8":116000,"10":118000,"12":120000,"14":122000,"16":124000,"18":126000,"20":128000,"22":130000}},
+  QD:{name:"Quần dài nam",        prices:{"5":122000,"6":124000,"8":126000,"10":128000,"12":130000,"14":132000,"15":134000,"16":136000,"18":138000,"20":140000,"22":142000}},
+  TD:{name:"Đồ thể dục",          prices:{"XS":185000,"S":185000,"M":185000,"L":190000,"XL":190000,"2XL":190000,"3XL":195000,"4XL":195000,"5XL":195000,"Ngoại cỡ":195000}}
 };
 const fmt = n => (n||0).toLocaleString('vi-VN');
 const money = n => fmt(n)+' đ';
@@ -467,6 +467,8 @@ function importCSV(input){const file=input.files[0];if(!file)return;const rd=new
 
 /* ====== Đơn giá (bảng giá, sửa được, đồng bộ Sheets) ====== */
 const DEFAULT_PRICES={};Object.keys(PRODUCTS).forEach(ma=>DEFAULT_PRICES[ma]={...PRODUCTS[ma].prices});
+const PRICE_VERSION='2025-2026-v3';   // ⬅ ĐỔI giá trị này mỗi lần cập nhật bảng giá trong code -> tự đẩy giá mới lên Sheet
+let forceNewPrices=false;
 function savePricesLocal(){const n={};Object.keys(PRODUCTS).forEach(ma=>n[ma]={...PRODUCTS[ma].prices});localStorage.setItem('dp_prices',JSON.stringify(n));}
 function loadPricesLocal(){try{const n=JSON.parse(localStorage.getItem('dp_prices')||'null');if(n)Object.keys(n).forEach(ma=>{if(PRODUCTS[ma])Object.keys(n[ma]).forEach(s=>{if(PRODUCTS[ma].prices[s]!=null)PRODUCTS[ma].prices[s]=+n[ma][s]||0;});});}catch(e){}}
 function applyPrices(arr){if(!Array.isArray(arr)||!arr.length)return false;let any=false;arr.forEach(r=>{const ma=r.ma,s=String(r.size);if(PRODUCTS[ma]&&PRODUCTS[ma].prices[s]!=null){PRODUCTS[ma].prices[s]=+r.dg||0;any=true;}});return any;}
@@ -496,7 +498,11 @@ async function cloudPull(){if(!API_URL){setSync('none');return false;}
   setSync('busy');
   try{const res=await fetch(API_URL+(API_URL.includes('?')?'&':'?')+'action=read&t='+Date.now(),{method:'GET'});const data=await res.json();
     if(data&&data.sheetUrl) cloudSheetUrl=data.sheetUrl;
-    if(data){ if(Array.isArray(data.prices)&&data.prices.length){applyPrices(data.prices);savePricesLocal();renderPrices();recalc();} else {cloudPushPrices();} }
+    if(data){
+      if(forceNewPrices){ cloudPushPrices(); forceNewPrices=false; renderPrices(); recalc(); }   // ép giá mới lên Sheet, bỏ giá cũ
+      else if(Array.isArray(data.prices)&&data.prices.length){ applyPrices(data.prices); savePricesLocal(); renderPrices(); recalc(); }
+      else { cloudPushPrices(); }
+    }
     if(data&&data.ok&&Array.isArray(data.rows)){
       THPT=data.rows.map(r=>({id:r.id||uid(),pt:r.pt,ngay:r.ngay,hs:r.hs,lop:r.lop,ma:r.ma,name:r.name,size:String(r.size),dg:+r.dg||0,sl:+r.sl||0,tt:+r.tt||0}));
       ptCounter=THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0)+1;persist();setSync('on');return true;}
@@ -511,7 +517,9 @@ async function reloadFromCloud(){const ok=await cloudPull();renderAll();if(ok)to
 
 /* ====== Init ====== */
 (function init(){
-  loadPricesLocal();
+  if(localStorage.getItem('dp_price_ver')!==PRICE_VERSION){   // bảng giá trong code vừa cập nhật -> dùng làm chuẩn
+    savePricesLocal(); localStorage.setItem('dp_price_ver',PRICE_VERSION); forceNewPrices=true;
+  } else { loadPricesLocal(); }
   $('f_date').value=new Date().toISOString().slice(0,10);
   $('f_pt').value=ptCounter; newPhieu(); renderPrices();
   if(API_URL){
