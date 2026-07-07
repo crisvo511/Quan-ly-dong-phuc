@@ -129,6 +129,14 @@
   .pr-sign{display:flex;justify-content:space-between;margin-top:8px;text-align:center;font-size:10.5px}
   .pr-sign .sign-space{height:26px}
   .pr-cut{border-top:1px dashed #999;margin:7px 0}
+  .pr-report{font-size:11px;color:#000}
+  .pr-report h2{text-align:center;margin:2px 0 4px;font-size:18px;letter-spacing:.5px}
+  .pr-report table{width:100%;border-collapse:collapse;margin-top:6px}
+  .pr-report th,.pr-report td{border:1px solid #000;padding:3px 6px;font-size:10.5px}
+  .pr-report th{background:#eee}
+  .pr-report thead{display:table-header-group}
+  .pr-report tr{page-break-inside:avoid}
+  .pr-report .r{text-align:right}
 </style>
 </head>
 <body>
@@ -208,7 +216,12 @@
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
         <h3 class="sectitle" style="margin:0">📒 Sổ bán hàng — THPT</h3>
-        <button class="btn btn-new btn-sm" onclick="clearAll()">Xoá tất cả</button>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="muted">In theo ngày:</span>
+          <select id="thptDaySel" onchange="thptDayPicked=true" style="min-width:190px"></select>
+          <button class="btn btn-print btn-sm" onclick="printTHPT()">🖨️ In sổ</button>
+          <button class="btn btn-new btn-sm" onclick="clearAll()">Xoá tất cả</button>
+        </div>
       </div>
       <div class="scroll"><table class="dt">
         <thead><tr><th>PT</th><th>Ngày</th><th>Họ tên HS</th><th>Lớp</th><th>Mã SP</th><th>Chủng loại</th><th>Size</th><th class="num">Đơn giá</th><th class="num">SL</th><th class="num">Thành tiền</th><th></th></tr></thead>
@@ -368,15 +381,44 @@ function printPhieu(){const lines=collectLines(),pt=$('f_pt').value||'',ngay=for
   if(!rows)rows=`<tr><td colspan="7" style="text-align:center;color:#888">(chưa có mặt hàng)</td></tr>`;
   const one=(lien)=>`<div class="pr-doc"><div style="display:flex;justify-content:space-between"><div><b>TRƯỜNG TIỂU HỌC ĐẶNG VĂN NGỮ</b><br><span style="font-size:10px">Đồng phục học sinh 2026–2027</span></div><div class="r" style="text-align:right">PT số: <b>${pt}</b><br>${ngay}<br><span style="font-size:9.5px;color:#555">${lien}</span></div></div><h2>PHIẾU THU</h2><div>Họ và tên HS: <b>${hs}</b> &nbsp; Lớp: <b>${lop}</b></div><table><thead><tr><th>STT</th><th>Mã SP</th><th>Chủng loại</th><th>Size</th><th>Đơn giá</th><th>SL</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="6" class="r"><b>Cộng</b></td><td class="r"><b>${fmt(total)}</b></td></tr></tfoot></table><div style="margin-top:3px"><i>Bằng chữ: ${docTienBangChu(total)}</i></div><div class="pr-sign"><div>Phụ huynh học sinh<div class="sign-space"></div>(Ký, ghi rõ họ tên)</div><div>Người thu tiền<div class="sign-space"></div>${nt?('<b>'+nt+'</b>'):'(Ký, ghi rõ họ tên)'}</div></div></div>`;
   $('printArea').innerHTML=one('Liên 1 — Phụ huynh')+'<div class="pr-cut"></div>'+one('Liên 2 — Lưu')+'<div class="pr-cut"></div>'+one('Liên 3 — Lưu');
-  window.print();}
+  setPrintPage(false); window.print();}
+
+function setPrintPage(landscape){
+  let s=$('printPage'); if(!s){s=document.createElement('style');s.id='printPage';document.head.appendChild(s);}
+  s.textContent='@media print{@page{size:A4 '+(landscape?'landscape':'portrait')+';margin:9mm}}';
+}
+function escHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function printTHPT(){
+  const sel=$('thptDaySel'); const day=sel?sel.value:'__all__';
+  const rows=THPT.filter(r=>day==='__all__'||r.ngay===day).slice().sort((a,b)=>(parseInt(a.pt)||0)-(parseInt(b.pt)||0));
+  if(!rows.length){toast('Không có dữ liệu cho ngày này');return;}
+  let totSL=0,totTien=0;
+  const body=rows.map((r,i)=>{totSL+=r.sl;totTien+=r.tt;return `<tr><td class="r">${i+1}</td><td class="r">${r.pt}</td><td>${escHtml(r.hs)}</td><td>${escHtml(r.lop)}</td><td>${r.ma}</td><td>${escHtml(r.name)}</td><td class="r">${r.size}</td><td class="r">${fmt(r.dg)}</td><td class="r">${r.sl}</td><td class="r">${fmt(r.tt)}</td></tr>`;}).join('');
+  const title = day==='__all__'?'TẤT CẢ CÁC NGÀY':day;
+  $('printArea').innerHTML=`<div class="pr-report">
+    <div style="text-align:center"><b>TRƯỜNG TIỂU HỌC ĐẶNG VĂN NGỮ</b> — Đồng phục học sinh 2026–2027</div>
+    <h2>SỔ BÁN HÀNG</h2>
+    <div style="text-align:center;margin-bottom:4px"><b>${title}</b> · ${rows.length} dòng</div>
+    <table><thead><tr><th>STT</th><th>PT</th><th>Họ tên HS</th><th>Lớp</th><th>Mã SP</th><th>Chủng loại</th><th>Size</th><th>Đơn giá</th><th>SL</th><th>Thành tiền</th></tr></thead>
+    <tbody>${body}</tbody>
+    <tfoot><tr><td colspan="8" class="r"><b>Tổng cộng</b></td><td class="r"><b>${fmt(totSL)}</b></td><td class="r"><b>${fmt(totTien)}</b></td></tr></tfoot></table>
+    <div style="margin-top:8px;text-align:right">Bằng chữ: <i>${docTienBangChu(totTien)}</i></div>
+  </div>`;
+  setPrintPage(true); window.print();
+}
 
 /* ====== THPT ====== */
-let editIdx=-1;
+let editIdx=-1, thptDayPicked=false;
 function escAttr(s){return String(s==null?'':s).replace(/"/g,'&quot;');}
 function parseNgayToIso(s){const m=s&&s.match(/Ngày (\d+) Tháng (\d+) năm (\d+)/);if(!m)return'';const p=n=>('0'+n).slice(-2);return `${m[3]}-${p(m[2])}-${p(m[1])}`;}
 function renderTHPT(){let rev=0,qty=0;const pts=new Set();
   THPT.forEach(r=>{rev+=r.tt;qty+=r.sl;pts.add(r.pt+'|'+r.ngay);});
   $('t_rev').textContent=money(rev);$('t_qty').textContent=fmt(qty);$('t_lines').textContent=fmt(THPT.length);$('t_pt').textContent=fmt(pts.size);
+  const dsel=$('thptDaySel');
+  if(dsel){const prev=dsel.value;const days=[...new Set(THPT.map(r=>r.ngay))].sort((a,b)=>keyNgay(b)-keyNgay(a));
+    dsel.innerHTML='<option value="__all__">Tất cả các ngày</option>'+days.map(dy=>`<option value="${dy}">${dy}</option>`).join('');
+    if(thptDayPicked && prev && [...dsel.options].some(o=>o.value===prev)) dsel.value=prev; else dsel.value=days.length?days[0]:'__all__';
+  }
   const tb=$('thptRows');
   if(!THPT.length){tb.innerHTML=`<tr><td colspan="11" class="empty">Chưa có dữ liệu. Hãy lưu một phiếu thu.</td></tr>`;return;}
   tb.innerHTML=THPT.map((r,i)=> i===editIdx?editRowHTML(r,i):viewRowHTML(r,i)).join('');}
