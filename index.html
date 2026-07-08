@@ -56,6 +56,8 @@
   .rowdel:hover{background:#fecaca}
   .rowedit{border:none;background:#e0e7ff;color:#4f46e5;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:14px;line-height:1}
   .rowedit:hover{background:#c7d2fe}
+  .rowprint{border:none;background:#cffafe;color:#0891b2;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:13px;line-height:1}
+  .rowprint:hover{background:#a5f3fc}
   .pcard{padding:16px 18px}
   .pcard-h{font-weight:700;margin-bottom:12px;font-size:15px}
   .ptag{display:inline-block;background:#eef2ff;color:var(--brand);font-weight:800;padding:2px 10px;border-radius:8px;margin-right:6px}
@@ -374,14 +376,24 @@ function newPhieu(){
   const hasData=[...document.querySelectorAll('#lineRows .r-ma')].some(s=>s.value);
   if(hasData && !window.__saved && !confirm('Xoá nội dung phiếu hiện tại (chưa lưu) để nhập phiếu mới?')) return;
   $('f_pt').value=ptCounter;$('f_hs').value='';$('f_lop').value='';$('f_nguoithu').value='';$('lineRows').innerHTML='';for(let i=0;i<5;i++)addRow();restoreSaveBtn();}
-function printPhieu(){const lines=collectLines(),pt=$('f_pt').value||'',ngay=formatNgay($('f_date').value);
-  const hs=$('f_hs').value||'.................',lop=$('f_lop').value||'.........',nt=$('f_nguoithu').value||'';
-  let total=lines.reduce((a,l)=>a+l.tt,0);
-  let rows=lines.map((l,i)=>`<tr><td class="r">${i+1}</td><td>${l.ma}</td><td>${l.name}</td><td class="r">${l.size}</td><td class="r">${fmt(l.dg)}</td><td class="r">${l.sl}</td><td class="r">${fmt(l.tt)}</td></tr>`).join('');
+function buildReceiptPrint(o){
+  const lines=o.lines||[];
+  const pt=o.pt||'', ngay=o.ngay||'';
+  const hs=(o.hs&&String(o.hs).trim())||'.................', lop=(o.lop&&String(o.lop).trim())||'.........', nt=o.nt||'';
+  const total=lines.reduce((a,l)=>a+l.tt,0);
+  let rows=lines.map((l,i)=>`<tr><td class="r">${i+1}</td><td>${l.ma}</td><td>${escHtml(l.name)}</td><td class="r">${l.size}</td><td class="r">${fmt(l.dg)}</td><td class="r">${l.sl}</td><td class="r">${fmt(l.tt)}</td></tr>`).join('');
   if(!rows)rows=`<tr><td colspan="7" style="text-align:center;color:#888">(chưa có mặt hàng)</td></tr>`;
-  const one=(lien)=>`<div class="pr-doc"><div style="display:flex;justify-content:space-between"><div><b>TRƯỜNG TIỂU HỌC ĐẶNG VĂN NGỮ</b><br><span style="font-size:10px">Đồng phục học sinh 2026–2027</span></div><div class="r" style="text-align:right">PT số: <b>${pt}</b><br>${ngay}<br><span style="font-size:9.5px;color:#555">${lien}</span></div></div><h2>PHIẾU THU</h2><div>Họ và tên HS: <b>${hs}</b> &nbsp; Lớp: <b>${lop}</b></div><table><thead><tr><th>STT</th><th>Mã SP</th><th>Chủng loại</th><th>Size</th><th>Đơn giá</th><th>SL</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="6" class="r"><b>Cộng</b></td><td class="r"><b>${fmt(total)}</b></td></tr></tfoot></table><div style="margin-top:3px"><i>Bằng chữ: ${docTienBangChu(total)}</i></div><div class="pr-sign"><div>Phụ huynh học sinh<div class="sign-space"></div>(Ký, ghi rõ họ tên)</div><div>Người thu tiền<div class="sign-space"></div>${nt?('<b>'+nt+'</b>'):'(Ký, ghi rõ họ tên)'}</div></div></div>`;
+  const one=(lien)=>`<div class="pr-doc"><div style="display:flex;justify-content:space-between"><div><b>TRƯỜNG TIỂU HỌC ĐẶNG VĂN NGỮ</b><br><span style="font-size:10px">Đồng phục học sinh 2026–2027</span></div><div class="r" style="text-align:right">PT số: <b>${pt}</b><br>${ngay}<br><span style="font-size:9.5px;color:#555">${lien}</span></div></div><h2>PHIẾU THU</h2><div>Họ và tên HS: <b>${escHtml(hs)}</b> &nbsp; Lớp: <b>${escHtml(lop)}</b></div><table><thead><tr><th>STT</th><th>Mã SP</th><th>Chủng loại</th><th>Size</th><th>Đơn giá</th><th>SL</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="6" class="r"><b>Cộng</b></td><td class="r"><b>${fmt(total)}</b></td></tr></tfoot></table><div style="margin-top:3px"><i>Bằng chữ: ${docTienBangChu(total)}</i></div><div class="pr-sign"><div>Phụ huynh học sinh<div class="sign-space"></div>(Ký, ghi rõ họ tên)</div><div>Người thu tiền<div class="sign-space"></div>${nt?('<b>'+escHtml(nt)+'</b>'):'(Ký, ghi rõ họ tên)'}</div></div></div>`;
   $('printArea').innerHTML=one('Liên 1 — Phụ huynh')+'<div class="pr-cut"></div>'+one('Liên 2 — Lưu')+'<div class="pr-cut"></div>'+one('Liên 3 — Lưu');
-  setPrintPage(false); window.print();}
+  setPrintPage(false); window.print();
+}
+function printPhieu(){ buildReceiptPrint({pt:$('f_pt').value, ngay:formatNgay($('f_date').value), hs:$('f_hs').value, lop:$('f_lop').value, nt:$('f_nguoithu').value, lines:collectLines()}); }
+function printReceiptOf(i){
+  const r=THPT[i]; if(!r)return;
+  const key=r.pt+'|'+r.ngay+'|'+(r.hs||'')+'|'+(r.lop||'');
+  const lines=THPT.filter(x=>(x.pt+'|'+x.ngay+'|'+(x.hs||'')+'|'+(x.lop||''))===key).map(x=>({ma:x.ma,name:x.name,size:x.size,dg:x.dg,sl:x.sl,tt:x.tt}));
+  buildReceiptPrint({pt:r.pt, ngay:r.ngay, hs:r.hs, lop:r.lop, nt:'', lines});
+}
 
 function setPrintPage(landscape){
   let s=$('printPage'); if(!s){s=document.createElement('style');s.id='printPage';document.head.appendChild(s);}
@@ -422,7 +434,7 @@ function renderTHPT(){let rev=0,qty=0;const pts=new Set();
   const tb=$('thptRows');
   if(!THPT.length){tb.innerHTML=`<tr><td colspan="11" class="empty">Chưa có dữ liệu. Hãy lưu một phiếu thu.</td></tr>`;return;}
   tb.innerHTML=THPT.map((r,i)=> i===editIdx?editRowHTML(r,i):viewRowHTML(r,i)).join('');}
-function viewRowHTML(r,i){return `<tr><td><span class="tag">${r.pt}</span></td><td>${r.ngay}</td><td>${escAttr(r.hs)}</td><td>${escAttr(r.lop)}</td><td>${r.ma}</td><td>${r.name}</td><td>${r.size}</td><td class="num">${fmt(r.dg)}</td><td class="num">${r.sl}</td><td class="num">${fmt(r.tt)}</td><td style="white-space:nowrap"><button class="rowedit" onclick="editRow(${i})" title="Sửa">✎</button> <button class="rowdel" onclick="delRow(${i})" title="Xoá">×</button></td></tr>`;}
+function viewRowHTML(r,i){return `<tr><td><span class="tag">${r.pt}</span></td><td>${r.ngay}</td><td>${escAttr(r.hs)}</td><td>${escAttr(r.lop)}</td><td>${r.ma}</td><td>${r.name}</td><td>${r.size}</td><td class="num">${fmt(r.dg)}</td><td class="num">${r.sl}</td><td class="num">${fmt(r.tt)}</td><td style="white-space:nowrap"><button class="rowprint" onclick="printReceiptOf(${i})" title="In lại phiếu">🖨️</button> <button class="rowedit" onclick="editRow(${i})" title="Sửa">✎</button> <button class="rowdel" onclick="delRow(${i})" title="Xoá">×</button></td></tr>`;}
 function editRowHTML(r,i){const iso=parseNgayToIso(r.ngay);
   return `<tr style="background:#fffbeb">
     <td><input id="e_pt" type="number" value="${r.pt}" style="width:56px"></td>
