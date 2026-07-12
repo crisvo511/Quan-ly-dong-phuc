@@ -466,7 +466,7 @@ function renderTHPT(){
   const tb=$('thptRows');
   if(!THPT.length){tb.innerHTML=`<tr><td colspan="11" class="empty">Chưa có dữ liệu. Hãy lưu một phiếu thu.</td></tr>`;return;}
   if(!list.length){tb.innerHTML=`<tr><td colspan="11" class="empty">Không có dòng nào khớp bộ lọc.</td></tr>`;return;}
-  tb.innerHTML=list.map(({r,i})=> i===editIdx?editRowHTML(r,i):viewRowHTML(r,i)).join('');}
+  tb.innerHTML=list.slice().reverse().map(({r,i})=> i===editIdx?editRowHTML(r,i):viewRowHTML(r,i)).join('');}  // mới nhất lên đầu
 function viewRowHTML(r,i){return `<tr><td><span class="tag">${r.pt}</span></td><td>${r.ngay}</td><td>${escAttr(r.hs)}</td><td>${escAttr(r.lop)}</td><td>${r.ma}</td><td>${r.name}</td><td>${r.size}</td><td class="num">${fmt(r.dg)}</td><td class="num">${r.sl}</td><td class="num">${fmt(r.tt)}</td><td style="white-space:nowrap"><button class="rowprint" onclick="printReceiptOf(${i})" title="In lại phiếu">🖨️</button> <button class="rowedit" onclick="editRow(${i})" title="Sửa">✎</button> <button class="rowdel" onclick="delRow(${i})" title="Xoá">×</button></td></tr>`;}
 function editRowHTML(r,i){const iso=parseNgayToIso(r.ngay);
   return `<tr style="background:#fffbeb">
