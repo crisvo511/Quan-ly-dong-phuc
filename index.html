@@ -58,6 +58,10 @@
   .rowedit:hover{background:#c7d2fe}
   .rowprint{border:none;background:#cffafe;color:#0891b2;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:13px;line-height:1}
   .rowprint:hover{background:#a5f3fc}
+  .filterbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;background:var(--soft);padding:10px 12px;border-radius:12px}
+  .filterbar input,.filterbar select{padding:8px 10px;font-size:13.5px}
+  .filterbar #fSearch{flex:1;min-width:170px}
+  .filterbar .fl{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:4px}
   .pcard{padding:16px 18px}
   .pcard-h{font-weight:700;margin-bottom:12px;font-size:15px}
   .ptag{display:inline-block;background:#eef2ff;color:var(--brand);font-weight:800;padding:2px 10px;border-radius:8px;margin-right:6px}
@@ -216,14 +220,21 @@
       <div class="kpi k4"><div class="lbl">Số phiếu</div><div class="val" id="t_pt">0</div></div>
     </div>
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
         <h3 class="sectitle" style="margin:0">📒 Sổ bán hàng — THPT</h3>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span class="muted">In theo ngày:</span>
-          <select id="thptDaySel" onchange="thptDayPicked=true" style="min-width:190px"></select>
           <button class="btn btn-print btn-sm" onclick="printTHPT()">🖨️ In sổ</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportFilteredCSV()">Xuất CSV</button>
           <button class="btn btn-new btn-sm" onclick="clearAll()">Xoá tất cả</button>
         </div>
+      </div>
+      <div class="filterbar">
+        <input id="fSearch" placeholder="🔍 Tìm tên HS, lớp, PT, mã SP…" oninput="renderTHPT()">
+        <label class="fl">Từ <input id="fFrom" type="date" onchange="renderTHPT()"></label>
+        <label class="fl">Đến <input id="fTo" type="date" onchange="renderTHPT()"></label>
+        <select id="fLoai" onchange="renderTHPT()"><option value="">Tất cả loại</option><option value="NT">NT · Áo sơ mi nam</option><option value="BT">BT · Áo nữ sen bèo</option><option value="VX">VX · Váy xòe</option><option value="QS">QS · Quần short</option><option value="QD">QD · Quần dài</option><option value="TD">TD · Đồ thể dục</option></select>
+        <select id="fLop" onchange="renderTHPT()"><option value="">Tất cả lớp</option></select>
+        <button class="btn btn-new btn-sm" onclick="clearFilters()">Xoá lọc</button>
       </div>
       <div class="scroll"><table class="dt">
         <thead><tr><th>PT</th><th>Ngày</th><th>Họ tên HS</th><th>Lớp</th><th>Mã SP</th><th>Chủng loại</th><th>Size</th><th class="num">Đơn giá</th><th class="num">SL</th><th class="num">Thành tiền</th><th></th></tr></thead>
@@ -401,12 +412,11 @@ function setPrintPage(landscape){
 }
 function escHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function printTHPT(){
-  const sel=$('thptDaySel'); const day=sel?sel.value:'__all__';
-  const rows=THPT.filter(r=>day==='__all__'||r.ngay===day).slice().sort((a,b)=>(parseInt(a.pt)||0)-(parseInt(b.pt)||0));
-  if(!rows.length){toast('Không có dữ liệu cho ngày này');return;}
+  const rows=filteredTHPT().map(x=>x.r).slice().sort((a,b)=>(parseInt(a.pt)||0)-(parseInt(b.pt)||0));
+  if(!rows.length){toast('Không có dữ liệu để in');return;}
   let totSL=0,totTien=0;
   const body=rows.map((r,i)=>{totSL+=r.sl;totTien+=r.tt;return `<tr><td class="r">${i+1}</td><td class="r">${r.pt}</td><td>${escHtml(r.hs)}</td><td>${escHtml(r.lop)}</td><td>${r.ma}</td><td>${escHtml(r.name)}</td><td class="r">${r.size}</td><td class="r">${fmt(r.dg)}</td><td class="r">${r.sl}</td><td class="r">${fmt(r.tt)}</td></tr>`;}).join('');
-  const title = day==='__all__'?'TẤT CẢ CÁC NGÀY':day;
+  const title = filterSummary();
   $('printArea').innerHTML=`<div class="pr-report">
     <div style="text-align:center"><b>TRƯỜNG TIỂU HỌC ĐẶNG VĂN NGỮ</b> — Đồng phục học sinh 2026–2027</div>
     <h2>SỔ BÁN HÀNG</h2>
@@ -420,20 +430,43 @@ function printTHPT(){
 }
 
 /* ====== THPT ====== */
-let editIdx=-1, thptDayPicked=false;
+let editIdx=-1;
 function escAttr(s){return String(s==null?'':s).replace(/"/g,'&quot;');}
 function parseNgayToIso(s){const m=s&&s.match(/Ngày (\d+) Tháng (\d+) năm (\d+)/);if(!m)return'';const p=n=>('0'+n).slice(-2);return `${m[3]}-${p(m[2])}-${p(m[1])}`;}
-function renderTHPT(){let rev=0,qty=0;const pts=new Set();
-  THPT.forEach(r=>{rev+=r.tt;qty+=r.sl;pts.add(r.pt+'|'+r.ngay);});
-  $('t_rev').textContent=money(rev);$('t_qty').textContent=fmt(qty);$('t_lines').textContent=fmt(THPT.length);$('t_pt').textContent=fmt(pts.size);
-  const dsel=$('thptDaySel');
-  if(dsel){const prev=dsel.value;const days=[...new Set(THPT.map(r=>r.ngay))].sort((a,b)=>keyNgay(b)-keyNgay(a));
-    dsel.innerHTML='<option value="__all__">Tất cả các ngày</option>'+days.map(dy=>`<option value="${dy}">${dy}</option>`).join('');
-    if(thptDayPicked && prev && [...dsel.options].some(o=>o.value===prev)) dsel.value=prev; else dsel.value=days.length?days[0]:'__all__';
+function ymdOfNgay(s){const m=s&&s.match(/Ngày (\d+) Tháng (\d+) năm (\d+)/);return m?+(m[3]+('0'+m[2]).slice(-2)+('0'+m[1]).slice(-2)):0;}
+function thptFilterFn(r){
+  const g=id=>{const el=$(id);return el?el.value:'';};
+  const q=g('fSearch').trim().toLowerCase(), ma=g('fLoai'), lop=g('fLop'), from=g('fFrom'), to=g('fTo');
+  if(ma && r.ma!==ma) return false;
+  if(lop && (r.lop||'').trim()!==lop) return false;
+  if(from||to){const k=ymdOfNgay(r.ngay); if(from && k< +from.replace(/-/g,'')) return false; if(to && k> +to.replace(/-/g,'')) return false;}
+  if(q){const hay=((r.hs||'')+' '+(r.lop||'')+' '+r.pt+' '+r.ma+' '+(r.name||'')).toLowerCase(); if(!hay.includes(q)) return false;}
+  return true;
+}
+function filteredTHPT(){const out=[];THPT.forEach((r,i)=>{if(thptFilterFn(r))out.push({r,i});});return out;}
+function clearFilters(){['fSearch','fFrom','fTo','fLoai','fLop'].forEach(id=>{const el=$(id);if(el)el.value='';});renderTHPT();}
+function dmy(iso){if(!iso)return'…';const [y,m,d]=iso.split('-');return d+'/'+m+'/'+y;}
+function filterSummary(){
+  const g=id=>{const el=$(id);return el?el.value:'';};
+  const q=g('fSearch').trim(),ma=g('fLoai'),lop=g('fLop'),from=g('fFrom'),to=g('fTo');const p=[];
+  if(from||to)p.push('Ngày '+dmy(from)+' – '+dmy(to));
+  if(ma)p.push('Loại '+ma); if(lop)p.push('Lớp '+lop); if(q)p.push('“'+q+'”');
+  return p.length?p.join(' · '):'TẤT CẢ';
+}
+function renderTHPT(){
+  const lsel=$('fLop');
+  if(lsel){const prev=lsel.value;const lops=[...new Set(THPT.map(r=>(r.lop||'').trim()).filter(x=>x))].sort();
+    lsel.innerHTML='<option value="">Tất cả lớp</option>'+lops.map(l=>`<option value="${escAttr(l)}">${escHtml(l)}</option>`).join('');
+    if([...lsel.options].some(o=>o.value===prev)) lsel.value=prev;
   }
+  const list=filteredTHPT();
+  let rev=0,qty=0;const pts=new Set();
+  list.forEach(({r})=>{rev+=r.tt;qty+=r.sl;pts.add(r.pt+'|'+r.ngay);});
+  $('t_rev').textContent=money(rev);$('t_qty').textContent=fmt(qty);$('t_lines').textContent=fmt(list.length);$('t_pt').textContent=fmt(pts.size);
   const tb=$('thptRows');
   if(!THPT.length){tb.innerHTML=`<tr><td colspan="11" class="empty">Chưa có dữ liệu. Hãy lưu một phiếu thu.</td></tr>`;return;}
-  tb.innerHTML=THPT.map((r,i)=> i===editIdx?editRowHTML(r,i):viewRowHTML(r,i)).join('');}
+  if(!list.length){tb.innerHTML=`<tr><td colspan="11" class="empty">Không có dòng nào khớp bộ lọc.</td></tr>`;return;}
+  tb.innerHTML=list.map(({r,i})=> i===editIdx?editRowHTML(r,i):viewRowHTML(r,i)).join('');}
 function viewRowHTML(r,i){return `<tr><td><span class="tag">${r.pt}</span></td><td>${r.ngay}</td><td>${escAttr(r.hs)}</td><td>${escAttr(r.lop)}</td><td>${r.ma}</td><td>${r.name}</td><td>${r.size}</td><td class="num">${fmt(r.dg)}</td><td class="num">${r.sl}</td><td class="num">${fmt(r.tt)}</td><td style="white-space:nowrap"><button class="rowprint" onclick="printReceiptOf(${i})" title="In lại phiếu">🖨️</button> <button class="rowedit" onclick="editRow(${i})" title="Sửa">✎</button> <button class="rowdel" onclick="delRow(${i})" title="Xoá">×</button></td></tr>`;}
 function editRowHTML(r,i){const iso=parseNgayToIso(r.ngay);
   return `<tr style="background:#fffbeb">
@@ -503,9 +536,12 @@ function renderDayCards(){
 function renderAll(){renderTHPT();renderDaily();renderPrices();$('f_pt').value=ptCounter;}
 
 /* ====== CSV ====== */
-function csvText(){const head=['ID','PT','Ngay','HoTen','Lop','MaSP','ChungLoai','Size','DonGia','SL','ThanhTien'];
-  const rows=THPT.map(r=>[r.id,r.pt,r.ngay,r.hs,r.lop,r.ma,r.name,r.size,r.dg,r.sl,r.tt]);
-  return '﻿'+head.join(',')+'\n'+rows.map(r=>r.map(c=>`"${String(c==null?'':c).replace(/"/g,'""')}"`).join(',')).join('\n');}
+function csvTextOf(rows){const head=['ID','PT','Ngay','HoTen','Lop','MaSP','ChungLoai','Size','DonGia','SL','ThanhTien'];
+  const r2=rows.map(r=>[r.id,r.pt,r.ngay,r.hs,r.lop,r.ma,r.name,r.size,r.dg,r.sl,r.tt]);
+  return '﻿'+head.join(',')+'\n'+r2.map(r=>r.map(c=>`"${String(c==null?'':c).replace(/"/g,'""')}"`).join(',')).join('\n');}
+function csvText(){return csvTextOf(THPT);}
+function exportFilteredCSV(){const rows=filteredTHPT().map(x=>x.r);if(!rows.length){toast('Không có dữ liệu để xuất');return;}
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csvTextOf(rows)],{type:'text/csv'}));a.download='so_ban_hang.csv';a.click();toast('Đã xuất '+rows.length+' dòng');}
 function parseCSV(text){text=text.replace(/^﻿/,'');const lines=text.split(/\r?\n/).filter(x=>x.length);const out=[];
   for(let i=1;i<lines.length;i++){const f=[];let cur='',q=false,ln=lines[i];
     for(let j=0;j<ln.length;j++){const c=ln[j];if(q){if(c==='"'){if(ln[j+1]==='"'){cur+='"';j++;}else q=false;}else cur+=c;}else{if(c==='"')q=true;else if(c===','){f.push(cur);cur='';}else cur+=c;}}
