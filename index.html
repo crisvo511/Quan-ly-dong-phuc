@@ -438,7 +438,7 @@ function thptFilterFn(r){
   const g=id=>{const el=$(id);return el?el.value:'';};
   const q=g('fSearch').trim().toLowerCase(), ma=g('fLoai'), lop=g('fLop'), from=g('fFrom'), to=g('fTo');
   if(ma && r.ma!==ma) return false;
-  if(lop && (r.lop||'').trim()!==lop) return false;
+  if(lop && String(r.lop==null?'':r.lop).trim()!==lop) return false;
   if(from||to){const k=ymdOfNgay(r.ngay); if(from && k< +from.replace(/-/g,'')) return false; if(to && k> +to.replace(/-/g,'')) return false;}
   if(q){const hay=((r.hs||'')+' '+(r.lop||'')+' '+r.pt+' '+r.ma+' '+(r.name||'')).toLowerCase(); if(!hay.includes(q)) return false;}
   return true;
@@ -455,7 +455,7 @@ function filterSummary(){
 }
 function renderTHPT(){
   const lsel=$('fLop');
-  if(lsel){const prev=lsel.value;const lops=[...new Set(THPT.map(r=>(r.lop||'').trim()).filter(x=>x))].sort();
+  if(lsel){const prev=lsel.value;const lops=[...new Set(THPT.map(r=>String(r.lop==null?'':r.lop).trim()).filter(x=>x))].sort();
     lsel.innerHTML='<option value="">Tất cả lớp</option>'+lops.map(l=>`<option value="${escAttr(l)}">${escHtml(l)}</option>`).join('');
     if([...lsel.options].some(o=>o.value===prev)) lsel.value=prev;
   }
@@ -594,7 +594,8 @@ async function cloudPull(){if(!API_URL){setSync('none');return false;}
       else { cloudPushPrices(); }
     }
     if(data&&data.ok&&Array.isArray(data.rows)){
-      THPT=data.rows.map(r=>({id:r.id||uid(),pt:r.pt,ngay:r.ngay,hs:r.hs,lop:r.lop,ma:r.ma,name:r.name,size:String(r.size),dg:+r.dg||0,sl:+r.sl||0,tt:+r.tt||0}));
+      const S=v=>String(v==null?'':v);
+      THPT=data.rows.map(r=>({id:r.id||uid(),pt:r.pt,ngay:S(r.ngay),hs:S(r.hs),lop:S(r.lop),ma:S(r.ma),name:S(r.name),size:S(r.size),dg:+r.dg||0,sl:+r.sl||0,tt:+r.tt||0}));
       ptCounter=THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0)+1;persist();setSync('on');return true;}
     setSync('err');return false;
   }catch(e){setSync('err');return false;}}
