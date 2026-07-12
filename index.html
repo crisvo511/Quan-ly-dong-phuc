@@ -229,7 +229,7 @@
         </div>
       </div>
       <div class="filterbar">
-        <input id="fSearch" placeholder="🔍 Tìm tên HS, lớp, PT, mã SP…" oninput="renderTHPT()">
+        <input id="fSearch" placeholder="🔍 Tìm tên HS, lớp, PT, mã SP…" autocomplete="off" oninput="renderTHPT()">
         <label class="fl">Từ <input id="fFrom" type="date" onchange="renderTHPT()"></label>
         <label class="fl">Đến <input id="fTo" type="date" onchange="renderTHPT()"></label>
         <select id="fLoai" onchange="renderTHPT()"><option value="">Tất cả loại</option><option value="NT">NT · Áo sơ mi nam</option><option value="BT">BT · Áo nữ sen bèo</option><option value="VX">VX · Váy xòe</option><option value="QS">QS · Quần short</option><option value="QD">QD · Quần dài</option><option value="TD">TD · Đồ thể dục</option></select>
@@ -612,6 +612,7 @@ async function reloadFromCloud(){const ok=await cloudPull();renderAll();if(ok)to
   } else { loadPricesLocal(); }
   $('f_date').value=new Date().toISOString().slice(0,10);
   $('f_pt').value=ptCounter; newPhieu(); renderPrices();
+  ['fSearch','fFrom','fTo','fLoai','fLop'].forEach(id=>{const el=$(id);if(el)el.value='';}); // luôn mở app ở trạng thái KHÔNG lọc -> hiện tất cả
   if(API_URL){
     flushQueue().then(()=>cloudPull()).then(renderAll);   // đẩy thao tác offline (nếu có) rồi kéo dữ liệu mới nhất
   } else { setSync('none'); }
