@@ -177,6 +177,9 @@
       <input id="importFile" type="file" accept=".csv,text/csv" style="display:none" onchange="importCSV(this)">
     </div>
     <p class="muted" style="margin-bottom:0">Dán URL Web App rồi nhấn “Lưu & kết nối”. App sẽ tải dữ liệu từ Sheet và tự ghi lên Sheet mỗi khi lưu phiếu.</p>
+    <hr style="border:none;border-top:1px solid var(--line);margin:12px 0">
+    <button class="btn btn-ghost btn-sm" onclick="renumberPT()">🔢 Đánh số lại PT (1,2,3… theo ngày)</button>
+    <p class="muted" style="margin-bottom:0">Đánh số lại toàn bộ cột PT theo thứ tự ngày và cập nhật “PT số” kế tiếp. <b>Ghi đè lên Google Sheets</b> — chỉ dùng khi cần dọn lại số.</p>
   </div>
 
   <!-- PHIEU THU -->
@@ -496,6 +499,20 @@ function saveRow(i){const ma=$('e_ma').value,size=$('e_size').value;if(!ma||!siz
   editIdx=-1;persist();renderTHPT();renderDaily();enqueue({action:'update',row:THPT[i]});toast('Đã cập nhật & đồng bộ');}
 function delRow(i){if(!confirm('Xoá dòng này (cả trên Google Sheets)?'))return;const id=THPT[i].id;THPT.splice(i,1);if(editIdx===i)editIdx=-1;persist();renderTHPT();renderDaily();if(id)enqueue({action:'delete',id});}
 function clearAll(){if(confirm('Xoá toàn bộ dữ liệu (cả trên Google Sheets)?')){THPT=[];persist();renderTHPT();renderDaily();enqueue({action:'clear'});}}
+function renumberPT(){
+  if(!THPT.length){toast('Chưa có dữ liệu để đánh số');return;}
+  if(!confirm('Đánh số lại PT cho TẤT CẢ phiếu theo thứ tự ngày (1, 2, 3…)?\nThao tác này ghi đè cột PT trên Google Sheets.'))return;
+  const groups={},orderKeys=[];
+  THPT.forEach((r,i)=>{const key=r.pt+'|'+r.ngay+'|'+(r.hs||'')+'|'+(r.lop||'');
+    if(!groups[key]){groups[key]={ymd:ymdOfNgay(r.ngay),firstIdx:i,rows:[]};orderKeys.push(key);}
+    groups[key].rows.push(r);});
+  const arr=orderKeys.map(k=>groups[k]).sort((a,b)=>(a.ymd-b.ymd)||(a.firstIdx-b.firstIdx));
+  arr.forEach((g,idx)=>{const np=idx+1;g.rows.forEach(r=>r.pt=np);});
+  ptMax=arr.length; localStorage.setItem('dp_ptmax',String(ptMax)); ptCounter=ptMax+1;
+  persist(); renderAll();
+  enqueue({action:'clear'}); enqueue({action:'append',rows:THPT});   // ghi đè lên Sheet với số PT mới
+  toast('Đã đánh số lại '+arr.length+' phiếu (PT 1–'+arr.length+'). PT số kế tiếp: '+ptCounter);
+}
 
 /* ====== Daily ====== */
 function keyNgay(s){const m=s&&s.match(/Ngày (\d+) Tháng (\d+) năm (\d+)/);return m?new Date(+m[3],+m[2]-1,+m[1]).getTime():0;}
