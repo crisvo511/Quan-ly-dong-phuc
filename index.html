@@ -325,14 +325,17 @@ function formatNgay(iso){if(!iso)return"";const[y,m,d]=iso.split('-');return `Ng
 
 /* ====== State ====== */
 let THPT = JSON.parse(localStorage.getItem('dp_thpt')||'[]');
-let ptCounter = parseInt(localStorage.getItem('dp_pt')||'1',10);
+let ptMax = parseInt(localStorage.getItem('dp_ptmax')||'0',10);   // PT lớn nhất từng dùng — không bao giờ tụt/reset
+let ptCounter = ptMax + 1;
+function noteMaxPt(v){v=parseInt(v)||0; if(v>ptMax){ptMax=v; localStorage.setItem('dp_ptmax',String(ptMax));} ptCounter=ptMax+1;}
 let API_URL = DEFAULT_API_URL || localStorage.getItem('dp_apiurl') || "";
 let cloudSheetUrl = "";
 function uid(){try{return crypto.randomUUID();}catch(e){return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,9);}}
 THPT.forEach(r=>{if(!r.id)r.id=uid();});   // gắn ID cho dữ liệu cũ chưa có
+noteMaxPt(THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0));   // khởi tạo bộ đếm PT từ dữ liệu cục bộ
 let queue = JSON.parse(localStorage.getItem('dp_queue')||'[]');   // hàng đợi thao tác chưa đồng bộ (chống mất khi offline)
 function saveQueue(){localStorage.setItem('dp_queue',JSON.stringify(queue));}
-function persist(){localStorage.setItem('dp_thpt',JSON.stringify(THPT));localStorage.setItem('dp_pt',String(ptCounter));}
+function persist(){localStorage.setItem('dp_thpt',JSON.stringify(THPT));}
 function enqueue(op){queue.push(op);saveQueue();flushQueue();}
 let flushing=false;
 async function flushQueue(){
@@ -378,7 +381,7 @@ function savePhieu(){const lines=collectLines();if(!lines.length){toast('Chưa c
   const hs=$('f_hs').value.trim(),lop=$('f_lop').value.trim();
   const newRows=lines.map(l=>({id:uid(),pt,ngay,hs,lop,...l}));
   newRows.forEach(r=>THPT.push(r));
-  ptCounter=Math.max(ptCounter,pt)+1;persist();
+  persist();noteMaxPt(pt);
   enqueue({action:'append',rows:newRows});
   toast('Đã lưu '+lines.length+' dòng — phiếu vẫn giữ để In');markSaved();}
 function markSaved(){window.__saved=true;const b=$('btnSave');if(b){b.disabled=true;b.textContent='✓ Đã lưu';}}
@@ -552,7 +555,7 @@ function parseCSV(text){text=text.replace(/^﻿/,'');const lines=text.split(/\r?
 function downloadCSV(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csvText()],{type:'text/csv'}));a.download='backup_dongphuc.csv';a.click();toast('Đã tải file .csv');}
 function importCSV(input){const file=input.files[0];if(!file)return;const rd=new FileReader();
   rd.onload=()=>{try{const data=parseCSV(rd.result);if(!data.length){toast('File trống/sai định dạng');return;}
-    if(confirm('Nạp '+data.length+' dòng từ file? (thay dữ liệu hiện tại + đẩy lên Sheets)')){THPT=data.map(r=>({...r,id:r.id||uid()}));ptCounter=THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0)+1;persist();renderAll();toast('Đã nạp '+data.length+' dòng');enqueue({action:'clear'});enqueue({action:'append',rows:THPT});}
+    if(confirm('Nạp '+data.length+' dòng từ file? (thay dữ liệu hiện tại + đẩy lên Sheets)')){THPT=data.map(r=>({...r,id:r.id||uid()}));persist();noteMaxPt(THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0));renderAll();toast('Đã nạp '+data.length+' dòng');enqueue({action:'clear'});enqueue({action:'append',rows:THPT});}
   }catch(e){toast('Lỗi đọc file');}input.value='';};rd.readAsText(file);}
 
 /* ====== Đơn giá (bảng giá, sửa được, đồng bộ Sheets) ====== */
@@ -596,7 +599,7 @@ async function cloudPull(){if(!API_URL){setSync('none');return false;}
     if(data&&data.ok&&Array.isArray(data.rows)){
       const S=v=>String(v==null?'':v);
       THPT=data.rows.map(r=>({id:r.id||uid(),pt:r.pt,ngay:S(r.ngay),hs:S(r.hs),lop:S(r.lop),ma:S(r.ma),name:S(r.name),size:S(r.size),dg:+r.dg||0,sl:+r.sl||0,tt:+r.tt||0}));
-      ptCounter=THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0)+1;persist();setSync('on');return true;}
+      persist();noteMaxPt(THPT.reduce((a,r)=>Math.max(a,parseInt(r.pt)||0),0));setSync('on');return true;}
     setSync('err');return false;
   }catch(e){setSync('err');return false;}}
 function openSheet(){
